@@ -400,7 +400,7 @@ README.md             # Esta documentación
 
 ---
 
-## 👥 Equipo
+## Equipo
 
 - **Product Manager/Engineer**: Gilberto Castro Sustaita
 - **Engineer**: Bryan Caleb Martinez Cabazos
@@ -409,4 +409,4 @@ README.md             # Esta documentación
 
 **Última actualización**: Junio 17, 2025  
 **Versión del firmware**: 1.0.0  
-**Estado del proyecto**: FASE 2 COMPLETADA - FASE 3 EN PROGRESO ✅
+**Estado del proyecto**: FASE 2 COMPLETADA - FASE 3 EN PROGRESO
