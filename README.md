@@ -400,12 +400,6 @@ README.md             # Esta documentación
 
 ---
 
-## 📄 Licencia
-
-Este proyecto está bajo licencia MIT. Ver archivo `LICENSE` para más detalles.
-
----
-
 ## 👥 Equipo
 
 - **Product Manager/Engineer**: Gilberto Castro Sustaita
