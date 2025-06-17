@@ -29,10 +29,10 @@ Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para di
 
 | Componente | Modelo | Estado | Función |
 |------------|--------|--------|---------|
-| **Microcontrolador** | XIAO ESP32S3 | ✅ Implementado | Control principal y procesamiento |
-| **Módulo LoRa** | Wio SX1262 | 🚧 Próxima fase | Comunicación mesh de largo alcance |
-| **Pantalla** | ESP32-compatible TFT | ⏳ Futuro | Visualización (solo RECEIVER) |
-| **GPS** | Módulo compatible UART | 🔄 Simulado | Geolocalización |
+| **Microcontrolador** | XIAO ESP32S3 | Implementado | Control principal y procesamiento |
+| **Módulo LoRa** | Wio SX1262 | Próxima fase | Comunicación mesh de largo alcance |
+| **Pantalla** | ESP32-compatible TFT | Futuro | Visualización (solo RECEIVER) |
+| **GPS** | Módulo compatible UART | Simulado | Geolocalización |
 
 ---
 
