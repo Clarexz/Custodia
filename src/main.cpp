@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include "config.h"
 #include "gps.h"
+#include "lora.h"
 
 // Pin del LED para indicadores visuales
 #define LED_PIN 21
@@ -12,6 +13,7 @@ void handleTrackerMode();
 void handleRepeaterMode();
 void handleReceiverMode();
 void initializeGPSForRole();
+void initializeLoRaForRole();  // Agregar esta declaración
 
 void setup() {
   // Inicializar comunicación serial
@@ -27,9 +29,10 @@ void setup() {
   // Inicializar sistema de configuración
   configManager.begin();
   
-  // Inicializar GPS solo si la configuración es válida
+  // Inicializar GPS y LoRa solo si la configuración es válida
   if (configManager.isConfigValid()) {
     initializeGPSForRole();
+    initializeLoRaForRole();
   }
 }
 
@@ -37,9 +40,10 @@ void loop() {
   // Procesar comandos seriales si están disponibles
   configManager.processSerialInput();
   
-  // Actualizar GPS si está habilitado
+  // Actualizar GPS y LoRa si está habilitado
   if (configManager.getState() == STATE_RUNNING) {
     gpsManager.update();
+    loraManager.update();
   }
   
   // Comportamiento según el estado actual
@@ -114,14 +118,26 @@ void handleTrackerMode() {
     GPSData gpsData = gpsManager.getCurrentData();
     
     if (gpsData.hasValidFix) {
-      // Mostrar información de transmisión (SIMPLIFICADA)
-      Serial.println("\n[TRACKER] === TRANSMISIÓN GPS ===");
+      // Obtener datos GPS actuales para transmisión LoRa
+      float lat = gpsData.latitude;
+      float lon = gpsData.longitude;
+      uint32_t timestamp = gpsData.timestamp;
+      
+      // Transmitir via LoRa
+      bool sent = loraManager.sendGPSData(lat, lon, timestamp);
+      
+      // Mostrar información de transmisión
+      Serial.println("\n[TRACKER] === TRANSMISIÓN GPS + LoRa ===");
       Serial.println("Device ID: " + String(config.deviceID));
       Serial.println("Coordenadas: " + gpsManager.formatCoordinates());
-      Serial.println("Timestamp: " + String(gpsData.timestamp));
+      Serial.println("Timestamp: " + String(timestamp));
       Serial.println("Packet: " + String(config.deviceID) + "," + gpsManager.formatForTransmission());
+      Serial.println("LoRa Status: " + String(sent ? "ENVIADO" : "FALLIDO"));
+      if (sent) {
+        Serial.println("RSSI: " + String(loraManager.getLastRSSI()) + " dBm");
+      }
       Serial.println("Próxima transmisión en " + String(config.gpsInterval) + " segundos");
-      Serial.println("==============================\n");
+      Serial.println("=======================================\n");
     } else {
       Serial.println("[TRACKER] Sin fix GPS - Esperando señal...");
     }
@@ -132,18 +148,36 @@ void handleTrackerMode() {
 }
 
 void handleRepeaterMode() {
+  static unsigned long lastActivity = 0;
+  unsigned long currentTime = millis();
+  
   // LED parpadeando muy rápido para indicar actividad de repetidor
   digitalWrite(LED_PIN, HIGH);
   delay(50);
   digitalWrite(LED_PIN, LOW);
   delay(50);
   
-  Serial.println("[REPEATER] Escuchando red mesh - Listo para retransmitir");
-  delay(2000);
+  // Mostrar estado cada 10 segundos
+  if (currentTime - lastActivity >= 10000) {
+    lastActivity = currentTime;
+    Serial.println("[REPEATER] Escuchando red mesh - Listo para retransmitir");
+    Serial.println("[REPEATER] Estado LoRa: " + loraManager.getStatusString());
+    
+    // Mostrar estadísticas cada vez
+    LoRaStats stats = loraManager.getStats();
+    if (stats.packetsReceived > 0 || stats.packetsSent > 0) {
+      Serial.println("[REPEATER] RX: " + String(stats.packetsReceived) + 
+                     " | TX: " + String(stats.packetsSent) + 
+                     " | Perdidos: " + String(stats.packetsLost));
+    }
+  }
+  
+  delay(100);  // Pausa pequeña para no saturar
 }
 
 void handleReceiverMode() {
   static unsigned long lastStatusUpdate = 0;
+  static uint32_t lastPacketCount = 0;
   unsigned long currentTime = millis();
   
   // LED encendido constante para indicar recepción activa
@@ -155,6 +189,7 @@ void handleReceiverMode() {
     
     Serial.println("\n[RECEIVER] === ESTADO DEL RECEPTOR ===");
     Serial.println("Escuchando posiciones GPS de la red...");
+    Serial.println("Estado LoRa: " + loraManager.getStatusString());
     
     // Mostrar nuestra propia posición como referencia
     GPSData gpsData = gpsManager.getCurrentData();
@@ -163,16 +198,63 @@ void handleReceiverMode() {
       Serial.println("Estado GPS: " + gpsManager.getStatusString());
     }
     
-    Serial.println("Dispositivos detectados: 0 (implementar en Fase 4)");
+    // Mostrar estadísticas de red
+    LoRaStats stats = loraManager.getStats();
+    Serial.println("Packets recibidos: " + String(stats.packetsReceived));
+    
+    // Detectar nuevos packets recibidos
+    if (stats.packetsReceived > lastPacketCount) {
+      Serial.println("¡NUEVOS DATOS RECIBIDOS!");
+      Serial.println("Último RSSI: " + String(stats.lastRSSI) + " dBm");
+      Serial.println("Último SNR: " + String(stats.lastSNR) + " dB");
+      lastPacketCount = stats.packetsReceived;
+    }
+    
     Serial.println("====================================\n");
   }
   
-  delay(1000);
+  delay(500);
 }
 
 /*
- * FUNCIONES AUXILIARES PARA GPS
+ * INICIALIZACIÓN DE LORA SEGÚN ROL
  */
+void initializeLoRaForRole() {
+  DeviceConfig config = configManager.getConfig();
+  
+  Serial.println("[MAIN] Inicializando LoRa para rol: " + String(config.role));
+  
+  // Inicializar LoRa con el device ID configurado
+  if (!loraManager.begin(config.deviceID)) {
+    Serial.println("[MAIN] ERROR: Fallo en inicialización LoRa");
+    return;
+  }
+  
+  // Configuración específica según rol
+  switch (config.role) {
+    case ROLE_TRACKER:
+      Serial.println("[MAIN] LoRa configurado para TRACKER");
+      // Los trackers pueden usar configuración por defecto
+      break;
+      
+    case ROLE_REPEATER:
+      Serial.println("[MAIN] LoRa configurado para REPEATER");
+      // Los repeaters podrían usar configuración optimizada para retransmisión
+      break;
+      
+    case ROLE_RECEIVER:
+      Serial.println("[MAIN] LoRa configurado para RECEIVER");
+      // Los receivers podrían usar configuración optimizada para recepción
+      break;
+      
+    default:
+      Serial.println("[MAIN] Rol no reconocido - LoRa en configuración por defecto");
+      break;
+  }
+  
+  // Mostrar configuración actual
+  loraManager.printConfiguration();
+}
 
 void initializeGPSForRole() {
   DeviceConfig config = configManager.getConfig();
