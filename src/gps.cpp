@@ -1,9 +1,11 @@
 /*
- * GPS.CPP - Implementación del Sistema GPS Simulado
+ * GPS.CPP - Implementación del Sistema GPS Simulado (FIXED VERSION)
  * 
  * Este archivo implementa toda la funcionalidad del sistema GPS,
  * incluyendo múltiples modos de simulación realista y preparación
  * para integración con módulos GPS reales.
+ * 
+ * FIX: Asegurar que hasValidFix siempre sea true para GPS simulado
  */
 
 #include "gps.h"
@@ -148,11 +150,13 @@ void GPSManager::enable() {
         // Simular tiempo de adquisición de fix
         delay(1000);
         
+        // ASEGURAR QUE SIEMPRE TENEMOS FIX PARA SIMULACIÓN
         status = GPS_STATUS_FIX_3D;
         currentData.hasValidFix = true;
         currentData.satellites = 8;  // Número típico de satélites
         
         Serial.println("[GPS] GPS activado - Fix obtenido");
+        Serial.println("[GPS] VALIDFIX: " + String(currentData.hasValidFix));
     }
 }
 
@@ -174,6 +178,14 @@ void GPSManager::reset() {
  * ACTUALIZACIÓN DE SIMULACIÓN PRINCIPAL
  */
 void GPSManager::updateSimulation() {
+    // NUEVO FIX: ASEGURAR QUE SIEMPRE TENEMOS FIX VÁLIDO PARA SIMULACIÓN
+    if (!currentData.hasValidFix && !signalLossActive) {
+        Serial.println("[GPS] FIX: Forzando fix válido para simulación");
+        currentData.hasValidFix = true;
+        status = GPS_STATUS_FIX_3D;
+        currentData.satellites = 8;
+    }
+    
     // Si hay pérdida de señal activa, manejarla primero
     if (signalLossActive) {
         updateSignalLoss();
@@ -200,8 +212,8 @@ void GPSManager::updateSimulation() {
             
         case GPS_SIM_SIGNAL_LOSS:
             // Este modo alterna entre señal y pérdida
-            if (random(0, 100) < 5) {  // 5% probabilidad de pérdida
-                simulateSignalLoss(random(5, 30));  // 5-30 segundos
+            if (random(0, 100) < 2) {  // REDUCIDO: 2% probabilidad de pérdida (era 5%)
+                simulateSignalLoss(random(5, 15));  // REDUCIDO: 5-15 segundos (era 5-30)
             }
             updateFixedPosition();  // Posición fija cuando hay señal
             break;
@@ -209,6 +221,13 @@ void GPSManager::updateSimulation() {
         default:
             updateFixedPosition();
             break;
+    }
+    
+    // NUEVO FIX: VERIFICAR AL FINAL QUE SEGUIMOS CON FIX VÁLIDO
+    if (!signalLossActive && !currentData.hasValidFix) {
+        Serial.println("[GPS] FIX: Re-estableciendo fix válido al final de update");
+        currentData.hasValidFix = true;
+        status = GPS_STATUS_FIX_3D;
     }
 }
 
@@ -283,6 +302,7 @@ void GPSManager::updateSignalLoss() {
         signalLossActive = false;
         status = GPS_STATUS_FIX_3D;
         currentData.hasValidFix = true;
+        currentData.satellites = 8;
         Serial.println("[GPS] Señal GPS recuperada");
     } else {
         // Mantener pérdida de señal
