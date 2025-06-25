@@ -4,10 +4,6 @@
  * Este archivo implementa toda la funcionalidad del sistema de configuración
  * para el Custom Meshtastic GPS Tracker. Maneja comandos seriales, validación
  * de parámetros, persistencia en EEPROM y control de estados del sistema.
- * 
- * Autor: Caleb Martinez Cabazos
- * Fecha: Junio 2025
- * Versión: 1.0.0
  */
 
 #include "config.h"

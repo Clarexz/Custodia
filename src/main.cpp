@@ -13,7 +13,10 @@ void handleTrackerMode();
 void handleRepeaterMode();
 void handleReceiverMode();
 void initializeGPSForRole();
-void initializeLoRaForRole();  // Agregar esta declaración
+void initializeLoRaForRole();
+
+// NUEVA: Flag para controlar inicialización tardía de LoRa
+bool loraInitialized = false;
 
 void setup() {
   // Inicializar comunicación serial
@@ -33,6 +36,7 @@ void setup() {
   if (configManager.isConfigValid()) {
     initializeGPSForRole();
     initializeLoRaForRole();
+    loraInitialized = true;
   }
 }
 
@@ -40,8 +44,19 @@ void loop() {
   // Procesar comandos seriales si están disponibles
   configManager.processSerialInput();
   
+  // NUEVO: Verificar si necesitamos inicializar LoRa después de configuración
+  if (configManager.getState() == STATE_RUNNING && !loraInitialized) {
+    if (configManager.isConfigValid()) {
+      Serial.println("[MAIN] === INICIALIZANDO SISTEMAS DESPUÉS DE CONFIGURACIÓN ===");
+      initializeGPSForRole();
+      initializeLoRaForRole();
+      loraInitialized = true;
+      Serial.println("[MAIN] Sistemas inicializados exitosamente");
+    }
+  }
+  
   // Actualizar GPS y LoRa si está habilitado
-  if (configManager.getState() == STATE_RUNNING) {
+  if (configManager.getState() == STATE_RUNNING && loraInitialized) {
     gpsManager.update();
     loraManager.update();
   }
@@ -58,7 +73,13 @@ void loop() {
       
     case STATE_RUNNING:
       // En modo operativo, ejecutar lógica según el rol
-      handleOperativeMode();
+      if (loraInitialized) {
+        handleOperativeMode();
+      } else {
+        // Si no está inicializado, mostrar mensaje de espera
+        Serial.println("[MAIN] Esperando inicialización de sistemas...");
+        delay(1000);
+      }
       break;
       
     case STATE_SLEEP:
@@ -74,6 +95,14 @@ void loop() {
 
 void handleOperativeMode() {
   DeviceConfig config = configManager.getConfig();
+  
+  // NUEVO: Verificación adicional de que LoRa esté funcionando
+  if (loraManager.getStatus() == LORA_STATUS_ERROR) {
+    Serial.println("[MAIN] ERROR: LoRa en estado de error. Reintentando inicialización...");
+    initializeLoRaForRole();
+    delay(2000);
+    return;
+  }
   
   switch (config.role) {
     case ROLE_TRACKER:
@@ -91,6 +120,7 @@ void handleOperativeMode() {
     default:
       // Rol no válido, volver a configuración
       configManager.setState(STATE_CONFIG_MODE);
+      loraInitialized = false;  // NUEVO: Reset flag
       Serial.println("[ERROR] Rol no válido. Entrando en modo configuración.");
       break;
   }
@@ -98,8 +128,25 @@ void handleOperativeMode() {
 
 void handleTrackerMode() {
   static unsigned long lastGPSTransmission = 0;
+  static unsigned long lastStatusCheck = 0;
   DeviceConfig config = configManager.getConfig();
   unsigned long currentTime = millis();
+  
+  // NUEVO: Verificación periódica del estado de LoRa (cada 30 segundos)
+  if (currentTime - lastStatusCheck >= 30000) {
+    lastStatusCheck = currentTime;
+    LoRaStatus loraStatus = loraManager.getStatus();
+    
+    if (loraStatus == LORA_STATUS_ERROR || loraStatus == LORA_STATUS_INIT) {
+      Serial.println("[TRACKER] WARNING: LoRa no está listo. Estado: " + loraManager.getStatusString());
+      Serial.println("[TRACKER] Reintentando inicialización...");
+      initializeLoRaForRole();
+      return;
+    }
+    
+    // Mostrar estadísticas mesh cada 30 segundos
+    loraManager.printMeshStats();
+  }
   
   // Verificar si es tiempo de transmitir posición GPS
   if (currentTime - lastGPSTransmission >= (config.gpsInterval * 1000)) {
@@ -123,21 +170,41 @@ void handleTrackerMode() {
       float lon = gpsData.longitude;
       uint32_t timestamp = gpsData.timestamp;
       
+      // NUEVO: Verificar estado de LoRa antes de transmitir
+      if (loraManager.getStatus() != LORA_STATUS_READY) {
+        Serial.println("[TRACKER] WARNING: LoRa no está listo para transmitir");
+        Serial.println("[TRACKER] Estado actual: " + loraManager.getStatusString());
+        return;
+      }
+      
       // Transmitir via LoRa
       bool sent = loraManager.sendGPSData(lat, lon, timestamp);
       
-      // Mostrar información de transmisión
-      Serial.println("\n[TRACKER] === TRANSMISIÓN GPS + LoRa ===");
+      // Mostrar información de transmisión ENHANCED
+      Serial.println("\n[TRACKER] === TRANSMISIÓN GPS + LoRa MESH ===");
       Serial.println("Device ID: " + String(config.deviceID));
+      Serial.println("Role: TRACKER (CLIENT priority)");
       Serial.println("Coordenadas: " + gpsManager.formatCoordinates());
       Serial.println("Timestamp: " + String(timestamp));
       Serial.println("Packet: " + String(config.deviceID) + "," + gpsManager.formatForTransmission());
       Serial.println("LoRa Status: " + String(sent ? "ENVIADO" : "FALLIDO"));
+      Serial.println("Estado LoRa: " + loraManager.getStatusString());
+      
       if (sent) {
-        Serial.println("RSSI: " + String(loraManager.getLastRSSI()) + " dBm");
+        Serial.println("RSSI último: " + String(loraManager.getLastRSSI()) + " dBm");
+        Serial.println("SNR último: " + String(loraManager.getLastSNR()) + " dB");
+        
+        // NUEVO: Mostrar estadísticas mesh
+        LoRaStats stats = loraManager.getStats();
+        Serial.println("Packets enviados: " + String(stats.packetsSent));
+        Serial.println("Duplicados ignorados: " + String(stats.duplicatesIgnored));
+        Serial.println("Retransmisiones: " + String(stats.rebroadcasts));
+      } else {
+        Serial.println("ERROR: Fallo en transmisión LoRa");
       }
+      
       Serial.println("Próxima transmisión en " + String(config.gpsInterval) + " segundos");
-      Serial.println("=======================================\n");
+      Serial.println("==========================================\n");
     } else {
       Serial.println("[TRACKER] Sin fix GPS - Esperando señal...");
     }
@@ -149,7 +216,18 @@ void handleTrackerMode() {
 
 void handleRepeaterMode() {
   static unsigned long lastActivity = 0;
+  static unsigned long lastStatusCheck = 0;
   unsigned long currentTime = millis();
+  
+  // NUEVO: Verificación periódica del estado de LoRa
+  if (currentTime - lastStatusCheck >= 30000) {
+    lastStatusCheck = currentTime;
+    if (loraManager.getStatus() == LORA_STATUS_ERROR) {
+      Serial.println("[REPEATER] ERROR: LoRa en estado de error. Reinicializando...");
+      initializeLoRaForRole();
+      return;
+    }
+  }
   
   // LED parpadeando muy rápido para indicar actividad de repetidor
   digitalWrite(LED_PIN, HIGH);
@@ -160,16 +238,19 @@ void handleRepeaterMode() {
   // Mostrar estado cada 10 segundos
   if (currentTime - lastActivity >= 10000) {
     lastActivity = currentTime;
-    Serial.println("[REPEATER] Escuchando red mesh - Listo para retransmitir");
-    Serial.println("[REPEATER] Estado LoRa: " + loraManager.getStatusString());
+    Serial.println("\n[REPEATER] === ESTADO DEL REPETIDOR ===");
+    Serial.println("Escuchando red mesh - Listo para retransmitir");
+    Serial.println("Role: REPEATER (ROUTER priority)");
+    Serial.println("Estado LoRa: " + loraManager.getStatusString());
     
-    // Mostrar estadísticas cada vez
+    // Mostrar estadísticas mesh
     LoRaStats stats = loraManager.getStats();
-    if (stats.packetsReceived > 0 || stats.packetsSent > 0) {
-      Serial.println("[REPEATER] RX: " + String(stats.packetsReceived) + 
-                     " | TX: " + String(stats.packetsSent) + 
-                     " | Perdidos: " + String(stats.packetsLost));
-    }
+    Serial.println("RX: " + String(stats.packetsReceived) + 
+                   " | TX: " + String(stats.packetsSent) + 
+                   " | Retransmisiones: " + String(stats.rebroadcasts));
+    Serial.println("Duplicados ignorados: " + String(stats.duplicatesIgnored));
+    Serial.println("Hop limit alcanzado: " + String(stats.hopLimitReached));
+    Serial.println("===================================\n");
   }
   
   delay(100);  // Pausa pequeña para no saturar
@@ -178,7 +259,18 @@ void handleRepeaterMode() {
 void handleReceiverMode() {
   static unsigned long lastStatusUpdate = 0;
   static uint32_t lastPacketCount = 0;
+  static unsigned long lastStatusCheck = 0;
   unsigned long currentTime = millis();
+  
+  // NUEVO: Verificación periódica del estado de LoRa
+  if (currentTime - lastStatusCheck >= 30000) {
+    lastStatusCheck = currentTime;
+    if (loraManager.getStatus() == LORA_STATUS_ERROR) {
+      Serial.println("[RECEIVER] ERROR: LoRa en estado de error. Reinicializando...");
+      initializeLoRaForRole();
+      return;
+    }
+  }
   
   // LED encendido constante para indicar recepción activa
   digitalWrite(LED_PIN, HIGH);
@@ -187,8 +279,9 @@ void handleReceiverMode() {
   if (currentTime - lastStatusUpdate >= 5000) {
     lastStatusUpdate = currentTime;
     
-    Serial.println("\n[RECEIVER] === ESTADO DEL RECEPTOR ===");
+    Serial.println("\n[RECEIVER] === ESTADO DEL RECEPTOR MESH ===");
     Serial.println("Escuchando posiciones GPS de la red...");
+    Serial.println("Role: RECEIVER (CLIENT priority)");
     Serial.println("Estado LoRa: " + loraManager.getStatusString());
     
     // Mostrar nuestra propia posición como referencia
@@ -198,9 +291,11 @@ void handleReceiverMode() {
       Serial.println("Estado GPS: " + gpsManager.getStatusString());
     }
     
-    // Mostrar estadísticas de red
+    // Mostrar estadísticas de red ENHANCED
     LoRaStats stats = loraManager.getStats();
     Serial.println("Packets recibidos: " + String(stats.packetsReceived));
+    Serial.println("Duplicados ignorados: " + String(stats.duplicatesIgnored));
+    Serial.println("Retransmisiones hechas: " + String(stats.rebroadcasts));
     
     // Detectar nuevos packets recibidos
     if (stats.packetsReceived > lastPacketCount) {
@@ -210,14 +305,14 @@ void handleReceiverMode() {
       lastPacketCount = stats.packetsReceived;
     }
     
-    Serial.println("====================================\n");
+    Serial.println("========================================\n");
   }
   
   delay(500);
 }
 
 /*
- * INICIALIZACIÓN DE LORA SEGÚN ROL
+ * INICIALIZACIÓN DE LORA SEGÚN ROL (ENHANCED)
  */
 void initializeLoRaForRole() {
   DeviceConfig config = configManager.getConfig();
@@ -227,24 +322,25 @@ void initializeLoRaForRole() {
   // Inicializar LoRa con el device ID configurado
   if (!loraManager.begin(config.deviceID)) {
     Serial.println("[MAIN] ERROR: Fallo en inicialización LoRa");
+    loraInitialized = false;
     return;
   }
+  
+  // NUEVO: Configurar role en LoRaManager para mesh priority
+  loraManager.setRole(config.role);
   
   // Configuración específica según rol
   switch (config.role) {
     case ROLE_TRACKER:
-      Serial.println("[MAIN] LoRa configurado para TRACKER");
-      // Los trackers pueden usar configuración por defecto
+      Serial.println("[MAIN] LoRa configurado para TRACKER (CLIENT priority)");
       break;
       
     case ROLE_REPEATER:
-      Serial.println("[MAIN] LoRa configurado para REPEATER");
-      // Los repeaters podrían usar configuración optimizada para retransmisión
+      Serial.println("[MAIN] LoRa configurado para REPEATER (ROUTER priority)");
       break;
       
     case ROLE_RECEIVER:
-      Serial.println("[MAIN] LoRa configurado para RECEIVER");
-      // Los receivers podrían usar configuración optimizada para recepción
+      Serial.println("[MAIN] LoRa configurado para RECEIVER (CLIENT priority)");
       break;
       
     default:
@@ -254,6 +350,15 @@ void initializeLoRaForRole() {
   
   // Mostrar configuración actual
   loraManager.printConfiguration();
+  
+  // NUEVO: Mostrar información específica de mesh
+  Serial.println("[MAIN] === CONFIGURACIÓN MESH ===");
+  Serial.println("Algoritmo: Meshtastic Managed Flood Routing");
+  Serial.println("Max hops: " + String(MESHTASTIC_MAX_HOPS));
+  Serial.println("Duplicate detection: ACTIVO");
+  Serial.println("SNR-based delays: ACTIVO");
+  Serial.println("Role priority: " + String(config.role == ROLE_REPEATER ? "ALTA" : "NORMAL"));
+  Serial.println("=============================");
 }
 
 void initializeGPSForRole() {
@@ -267,17 +372,20 @@ void initializeGPSForRole() {
       gpsManager.begin(GPS_SIM_LINEAR);
       gpsManager.setSimulationSpeed(15.0f);  // 15 km/h simula vehículo lento
       gpsManager.setUpdateInterval(1000);    // Actualizar cada segundo
+      Serial.println("[MAIN] GPS configurado: Movimiento lineal, 15 km/h");
       break;
       
     case ROLE_REPEATER:
       // Repeater puede tener GPS fijo (solo para referencia)
       gpsManager.begin(GPS_SIM_FIXED);
+      Serial.println("[MAIN] GPS configurado: Posición fija");
       break;
       
     case ROLE_RECEIVER:
       // Receiver puede tener GPS fijo o móvil
       gpsManager.begin(GPS_SIM_RANDOM_WALK);
       gpsManager.setSimulationSpeed(5.0f);   // 5 km/h simula persona caminando
+      Serial.println("[MAIN] GPS configurado: Caminata aleatoria, 5 km/h");
       break;
       
     default:

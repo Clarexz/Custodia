@@ -2,26 +2,28 @@
 
 **Firmware personalizado basado en Meshtastic para tracking GPS off-grid**
 
-![Estado del Proyecto](https://img.shields.io/badge/Estado-Fase%202%20Completada-green)
-![Versión](https://img.shields.io/badge/Versión-1.0.0-blue)
+![Estado del Proyecto](https://img.shields.io/badge/Estado-Fase%203%20COMPLETADA%20+%20MESH%20FUNCIONAL-brightgreen)
+![Versión](https://img.shields.io/badge/Versión-2.0.0-blue)
 ![Plataforma](https://img.shields.io/badge/Plataforma-ESP32--S3-orange)
 ![Framework](https://img.shields.io/badge/Framework-Arduino-teal)
+![Algoritmo](https://img.shields.io/badge/Algoritmo-Meshtastic%20Completo-purple)
 
 ---
 
 ## Descripción del Proyecto
 
-Sistema de tracking GPS completamente off-grid usando una red mesh LoRa. Implementación desde cero optimizada específicamente para asset tracking, eliminando la complejidad del Meshtastic original.
+Sistema de tracking GPS completamente off-grid usando una red mesh LoRa con **algoritmo completo de Meshtastic**. Implementación que integra el sistema de Managed Flood Routing.
 
 ### Objetivo Principal
-Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para diferentes roles en una red mesh LoRa, con configuración completa via comandos seriales y operación autónoma.
+Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para diferentes roles en una red mesh LoRa, con configuración completa via comandos seriales y operación autónoma **con mesh routing**.
 
 ### Arquitectura del Sistema
 - **Un solo firmware** para todos los dispositivos
 - **Configuración por roles** via comandos seriales
 - **Persistencia en EEPROM** para configuraciones
-- **GPS simulado realista** con múltiples modos
+- **GPS simulado** con múltiples modos
 - **Sistema de estados** bien definido
+- **NUEVO: Algoritmo Meshtastic integrado**
 
 ---
 
@@ -30,7 +32,7 @@ Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para di
 | Componente | Modelo | Estado | Función |
 |------------|--------|--------|---------|
 | **Microcontrolador** | XIAO ESP32S3 | Implementado | Control principal y procesamiento |
-| **Módulo LoRa** | Wio SX1262 | Próxima fase | Comunicación mesh de largo alcance |
+| **Módulo LoRa** | Wio SX1262 | **MESH FUNCIONAL (faltan pruebas)** | Comunicación mesh de largo alcance (faltan pruebas) |
 | **Pantalla** | ESP32-compatible TFT | Futuro | Visualización (solo RECEIVER) |
 | **GPS** | Módulo compatible UART | Simulado | Geolocalización |
 
@@ -41,20 +43,20 @@ Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para di
 ### TRACKER
 - Transmite su posición GPS periódicamente
 - Opera autónomamente sin interfaz de usuario
-- Optimizado para bajo consumo energético
-- **Estado actual**: Completamente funcional con GPS simulado
+- **Mesh routing con CLIENT priority**
+- **Estado actual**: **Mesh operativo con algoritmo Meshtastic**
 
-### REPEATER  
+### REPEATER
 - Actúa como extensor de rango
-- Retransmite mensajes de otros dispositivos
-- No transmite su propia posición
-- **Estado actual**: Lógica básica implementada
+- Retransmite mensajes de otros dispositivos con **ROUTER priority**
+- **SNR-based intelligent delays**
+- **Estado actual**: **Lógica de Meshtastic implementada**
 
 ### RECEIVER
-- Recibe y visualiza posiciones GPS
-- Incluye pantalla para mapas offline
-- Puede configurar otros dispositivos remotamente
-- **Estado actual**: Implementado, pendiente mapas offline
+- Recibe y visualiza posiciones GPS de toda la red
+- **Duplicate detection y mesh statistics**
+- Puede configurar otros dispositivos remotamente (futuro)
+- **Estado actual**: **Mesh operativo, pendiente mapas offline**
 
 ---
 
@@ -71,50 +73,57 @@ Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para di
 - [x] **Documentación integrada** (comando HELP)
 - [x] **Indicadores visuales LED** según estado/rol
 
-**Comandos disponibles:**
-```bash
-CONFIG_ROLE <TRACKER|REPEATER|RECEIVER>  # Configurar rol del dispositivo
-CONFIG_DEVICE_ID <1-999>                 # Configurar ID único
-CONFIG_GPS_INTERVAL <5-3600>             # Intervalo GPS en segundos
-CONFIG_MAX_HOPS <1-10>                   # Máximo saltos en mesh
-CONFIG_SAVE                              # Guardar configuración
-CONFIG_RESET                             # Resetear configuración
-INFO                                     # Información del dispositivo
-STATUS                                   # Estado y configuración actual
-START                                    # Iniciar modo operativo
-HELP                                     # Mostrar todos los comandos
-```
-
 ### **FASE 2: GPS Simulado** - COMPLETADA
 
 **Funcionalidades implementadas:**
-- [x] **Sistema GPS completo** con 5 modos de simulación
+- [x] **Sistema GPS** con 5 modos de simulación
 - [x] **Integración con configuración** existente
 - [x] **Diferentes comportamientos GPS** según rol del dispositivo
 - [x] **Transmisión periódica** de coordenadas en modo TRACKER
 - [x] **Validación y formateo** de datos GPS
 - [x] **Fórmula de Haversine** para cálculos geográficos precisos
 
-**Modos de simulación GPS:**
-- **GPS_SIM_FIXED**: Posición fija
-- **GPS_SIM_LINEAR**: Movimiento lineal
-- **GPS_SIM_CIRCULAR**: Movimiento circular
-- **GPS_SIM_RANDOM_WALK**: Caminata aleatoria
-- **GPS_SIM_SIGNAL_LOSS**: Pérdida/recuperación de señal
+### **FASE 3: LoRa + Mesh Completo** - COMPLETADA
 
-**Formato del packet GPS:**
-```
-deviceID,latitude,longitude,timestamp
-```
-**Ejemplo**: `001,25.302677,-98.277664,1718661234`
+**Funcionalidades implementadas:**
 
-### **Próximas Fases**
+- [x] **Comunicación LoRa básica** - SX1262 completamente funcional
+- [x] **Protocolo de packets optimizado** - Formato binario eficiente
+- [x] **Duplicate Packet Detection** - Sistema `wasSeenRecently()` de Meshtastic
+- [x] **SNR-based Intelligent Delays** - Nodos lejanos retransmiten primero
+- [x] **Role-based Priority** - REPEATERS con 160ms menos delay (como ROUTERS)
+- [x] **Managed Flood Routing** - Algoritmo completo de FloodingRouter.cpp
+- [x] **Hop Management** - Control de TTL con máximo 3 saltos
+- [x] **Mesh Statistics** - Tracking de duplicados, retransmisiones, etc.
+- [x] **Contention Window** - Valores exactos de Meshtastic (CWmin=2, CWmax=8)
 
-| Fase | Descripción | Estado | Prioridad |
-|------|-------------|--------|-----------|
-| **Fase 3** | LoRa básico - Comunicación real | En progreso | Crítico |
-| **Fase 4** | Mesh routing simplificado | Planificado | Crítico |
-| **Fase 5** | Características avanzadas | Planificado | Importante |
+**Valores implementados (exactos de Meshtastic):**
+- **CW Min/Max**: 2/8 con slot time de 10ms
+- **SNR Range**: -20dB a +15dB
+- **Max Hops**: 3 saltos
+- **Packet Memory**: 100 packets, 5 minutos
+- **Role Priority**: REPEATER = ROUTER priority
+
+### **FASE 4: Mesh Routing Avanzado** - 90% COMPLETADO
+- [x] ~~Algoritmo de routing básico~~ **Meshtastic completo**
+- [x] ~~Manejo de colisiones con random delay~~ **SNR-based delays**
+- [x] ~~Implementación de TTL~~ **Hop limit management**
+- [x] **Estadísticas básicas de red** **Implementado**
+
+**Lo que falta (opcional):**
+- [ ] Estadísticas avanzadas de topología de red
+- [ ] Mesh health monitoring
+- [ ] Network discovery automático
+
+### **FASE 5: Características Avanzadas** - PENDIENTE
+
+| Característica | Estado | Prioridad | Notas |
+|----------------|--------|-----------|-------|
+| **Remote configuration** | Planificado | Alta | Receiver-to-tracker commands |
+| **Battery monitoring** | Planificado | Media | Voltage reporting en packets |
+| **Modo sleep inteligente** | Planificado | Media | Power optimization |
+| **Mapas offline en RECEIVER** | Planificado | Baja | Visualización gráfica |
+| **Estimación teórica de nodos** | Planificado | Baja | Cálculo basado en Meshtastic |
 
 ---
 
@@ -123,6 +132,7 @@ deviceID,latitude,longitude,timestamp
 ### Prerrequisitos
 - **Visual Studio Code** con extensión PlatformIO
 - **XIAO ESP32S3** microcontrolador
+- **Wio SX1262 LoRa module** 
 - **Cable USB-C** para conectar el microcontrolador al equipo
 
 ### Pasos de Instalación
@@ -146,9 +156,21 @@ deviceID,latitude,longitude,timestamp
    - Click en "Monitor" (115200 baud)
    - Seguir secuencia de configuración
 
-### Configuración de Hardware para Próximas Fases
+### Hardware Setup LoRa
 
-**LoRa Setup (Fase 3):**
+**Conexiones XIAO ESP32S3 + Wio SX1262:**
+```
+XIAO ESP32S3    →    Wio SX1262
+GPIO 7 (SCK)    →    SCK
+GPIO 8 (MISO)   →    MISO  
+GPIO 9 (MOSI)   →    MOSI
+GPIO 41 (CS)    →    NSS
+GPIO 39         →    DIO1
+GPIO 42         →    RESET
+GPIO 40         →    BUSY
+3.3V            →    VCC
+GND             →    GND
+```
 
 ---
 
@@ -166,14 +188,14 @@ config> CONFIG_ROLE TRACKER
 config> CONFIG_DEVICE_ID 001
 [OK] Device ID configurado: 1
 
-config> CONFIG_GPS_INTERVAL 30
-[OK] Intervalo GPS configurado: 30 segundos
+config> CONFIG_GPS_INTERVAL 15
+[OK] Intervalo GPS configurado: 15 segundos
 
 config> STATUS
 === CONFIGURACIÓN ACTUAL ===
 Rol: TRACKER
 Device ID: 1
-Intervalo GPS: 30 segundos
+Intervalo GPS: 15 segundos
 Máximo saltos: 3
 ============================
 
@@ -184,16 +206,24 @@ config> START
 [OK] Iniciando modo operativo...
 ```
 
-### Salida Esperada en Modo TRACKER
+### Salida Esperada en Modo TRACKER (Con Mesh)
 
 ```
-[TRACKER] === TRANSMISIÓN GPS ===
+[TRACKER] === TRANSMISIÓN GPS + LoRa MESH ===
 Device ID: 1
+Role: TRACKER (CLIENT priority)
 Coordenadas: 25.302677,-98.277664
 Timestamp: 1718661234
 Packet: 1,25.302677,-98.277664,1718661234
-Próxima transmisión en 30 segundos
-==============================
+LoRa Status: ENVIADO
+Estado LoRa: LISTO
+RSSI último: -65.5 dBm
+SNR último: 10.2 dB
+Packets enviados: 15
+Duplicados ignorados: 0
+Retransmisiones: 3
+Próxima transmisión en 15 segundos
+==========================================
 ```
 
 ### Configuración de otros Roles
@@ -202,6 +232,7 @@ Próxima transmisión en 30 segundos
 ```bash
 CONFIG_ROLE REPEATER
 CONFIG_DEVICE_ID 002
+CONFIG_GPS_INTERVAL 30
 CONFIG_SAVE
 START
 ```
@@ -210,6 +241,7 @@ START
 ```bash
 CONFIG_ROLE RECEIVER
 CONFIG_DEVICE_ID 003
+CONFIG_GPS_INTERVAL 15
 CONFIG_SAVE
 START
 ```
@@ -226,13 +258,15 @@ src/
 ├── config.h          # Sistema de configuración - Declaraciones
 ├── config.cpp        # Sistema de configuración - Implementación
 ├── gps.h            # Sistema GPS - Declaraciones
-└── gps.cpp          # Sistema GPS - Implementación
+├── gps.cpp          # Sistema GPS - Implementación
+├── lora.h           # Sistema LoRa + Mesh - Declaraciones
+└── lora.cpp         # Sistema LoRa + Mesh - Implementación
 
 platformio.ini        # Configuración del proyecto PlatformIO
 README.md             # Esta documentación
 ```
 
-### Flujo de Datos
+### Flujo de Datos Enhanced
 
 ```
 [Startup] → [Config Manager] → [EEPROM Load] → [Estado Inicial]
@@ -243,7 +277,9 @@ README.md             # Esta documentación
                                         ↓
                               [GPS Manager] → [Simulación]
                                         ↓
-                              [Packet Format] → [Transmisión]
+                              [LoRa Manager] → [Meshtastic Algorithm]
+                                        ↓
+                     [Duplicate Detection] → [SNR Delays] → [Mesh Routing]
 ```
 
 ### Módulos Principales
@@ -255,12 +291,6 @@ README.md             # Esta documentación
 - Validación de parámetros
 - Control de estados del sistema
 
-**Métodos clave:**
-- `begin()` - Inicialización del sistema
-- `processSerialInput()` - Parser de comandos
-- `saveConfig()` / `loadConfig()` - Persistencia
-- `handleConfig*()` - Manejadores específicos de comandos
-
 #### **GPSManager** (`gps.h/cpp`)
 **Responsabilidades:**
 - Simulación GPS realista
@@ -268,11 +298,60 @@ README.md             # Esta documentación
 - Formateo de datos para transmisión
 - Diferentes modos de movimiento
 
-**Métodos clave:**
-- `begin(mode)` - Inicialización con modo específico
-- `update()` - Actualización continua de coordenadas
-- `getCurrentData()` - Obtener datos GPS actuales
-- `formatForTransmission()` - Generar packet listo para envío
+#### **LoRaManager** (`lora.h/cpp`) - **ENHANCED CON MESHTASTIC**
+**Responsabilidades principales:**
+- Hardware SX1262 management
+- Protocolo de packets optimizado
+- **Algoritmo completo de Meshtastic:**
+  - `wasSeenRecently()` - Duplicate detection
+  - `perhapsRebroadcast()` - Smart rebroadcast
+  - `getTxDelayMsecWeighted()` - SNR-based delays
+  - Role-based priority management
+- Estadísticas mesh completas
+
+---
+
+## Algoritmo Meshtastic Implementado
+
+### Core Components
+
+**Duplicate Detection:**
+```cpp
+// Evita loops infinitos con memoria de 100 packets
+bool wasSeenRecently(sourceID, packetID);
+```
+
+**SNR-based Delays:**
+```cpp
+// Nodos lejanos (SNR bajo) transmiten primero
+uint32_t delay = getTxDelayMsecWeighted(snr, role);
+```
+
+**⚡ Role Priority:**
+```cpp
+// REPEATER = ROUTER priority (160ms menos delay)
+if (role == ROLE_REPEATER) delay = base_delay;
+else delay = base_delay + 160ms;
+```
+
+**Hop Management:**
+```cpp
+// Máximo 3 saltos como Meshtastic
+if (packet.hops >= packet.maxHops) drop_packet();
+```
+
+### Estadísticas Mesh
+
+```cpp
+struct LoRaStats {
+    uint32_t packetsSent;       // Packets enviados
+    uint32_t packetsReceived;   // Packets recibidos válidos  
+    uint32_t duplicatesIgnored; // Duplicados filtrados
+    uint32_t rebroadcasts;      // Retransmisiones hechas
+    uint32_t hopLimitReached;   // Packets descartados por hop limit
+    float lastRSSI, lastSNR;    // Calidad de señal
+};
+```
 
 ---
 
@@ -289,124 +368,122 @@ README.md             # Esta documentación
 4. Hacer Upload inmediatamente
 ```
 
-**Upload exitoso pero no hay output en el monitor**
+### Problemas de LoRa
+
+**"LoRa Status: FALLIDO"**
 ```bash
-# Solución: Reset manual
-1. Presionar botón RESET (R) una vez
-2. El programa debería iniciar y mostrar mensajes
+# Verificar conexiones hardware:
+1. Revisar todas las conexiones XIAO ↔ SX1262
+2. Verificar alimentación 3.3V
+3. Comprobar que SX1262 esté correctamente conectado
+4. Reset del dispositivo después de configurar
 ```
 
-### Problemas de Configuración
-
-**"Sin fix GPS - Esperando señal..."**
+**"Sistema no está listo para transmitir"**
 ```bash
-# Solución: Reset del sistema
-1. Presionar botón RESET (R)
-2. O enviar cualquier comando para volver a CONFIG_MODE
-3. Luego START nuevamente
+# El nuevo código debería auto-reparar esto:
+1. El sistema detecta automáticamente LoRa no inicializado
+2. Reinicializa LoRa después de configuración
+3. Si persiste, verificar hardware
 ```
 
-**Configuración no se guarda**
+### Problemas de Mesh
+
+**"Packets recibidos: 0"**
 ```bash
-# Verificar secuencia correcta:
-1. CONFIG_ROLE y CONFIG_DEVICE_ID son obligatorios
-2. Ejecutar CONFIG_SAVE después de configurar
-3. Verificar con STATUS antes de START
+# Verificaciones:
+1. Ambos dispositivos en misma frecuencia (915 MHz)
+2. Mismos parámetros LoRa (SF7, BW125, etc.)
+3. Distancia apropiada (empezar <5 metros)
+4. Verificar que ambos estén transmitiendo
 ```
-
-### Problemas del Monitor Serial
-
-**No veo lo que escribo**
-- **Normal en PlatformIO** - comandos aparecen al presionar Enter
-- **Alternativa**: Usar Arduino IDE Serial Monitor
-
-**Monitor no responde**
-- Verificar velocidad: 115200 baud
-- Reconectar USB si es necesario
 
 ---
 
 ## Roadmap del Proyecto
 
-### Fase 3: LoRa Básico (En progreso)
-- [ ] Integración RadioLib para SX1262
-- [ ] Transmisión punto a punto básica
-- [ ] Protocolo de packets binario
-- [ ] Pruebas de alcance y confiabilidad
+### Próximos Pasos (Fase 5)
 
-### Fase 4: Mesh Simplificado
-- [ ] Algoritmo de routing básico
-- [ ] Manejo de colisiones con random delay
-- [ ] Implementación de TTL (Time To Live)
-- [ ] Estadísticas de red y nodos
+| Característica | Tiempo estimado | Prioridad |
+|----------------|-----------------|-----------|
+| **Remote configuration** | 2-3 días | Alta |
+| **Battery monitoring** | 1 día | Media |
+| **Power optimization** | 2 días | Media |
+| **Mapas offline** | 1 semana | Baja |
+| **Network analytics** | 3 días | Baja |
 
-### Fase 5: Características Avanzadas
-- [ ] Remote configuration (receiver-to-tracker)
-- [ ] Battery monitoring y voltage reporting
-- [ ] Modo sleep inteligente
-- [ ] Mapas offline en RECEIVER
-- [ ] Estimación teórica de capacidad de nodos
+### Mejoras Arquitecturales Planeadas
+
+**Modularización del código:**
+```
+src/
+├── lora/
+│   ├── radio_interface.h/cpp
+│   └── lora_manager.h/cpp  
+├── mesh/
+│   ├── flooding_router.h/cpp
+│   ├── packet_manager.h/cpp
+│   └── mesh_types.h
+└── main.cpp
+```
 
 ---
 
-## Documentación Adicional
+## Recursos Adicionales
 
-### Recursos Útiles
-- [Documentación de Meshtastic](https://meshtastic.org/) - Referencia del protocolo original
+### Documentación Técnica
+- [Meshtastic Firmware Repository](https://github.com/meshtastic/firmware) - Código fuente original
 - [ESP32-S3 Datasheet](https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf)
-- [PlatformIO Documentation](https://docs.platformio.org/)
-- [Seed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)
+- [SX1262 Datasheet](https://www.semtech.com/products/wireless-rf/lora-transceivers/sx1262)
+- [RadioLib Documentation](https://github.com/jgromes/RadioLib)
+
+### Algoritmo Meshtastic
+- [Managed Flood Routing Explained](https://meshtastic.org/blog/why-meshtastic-uses-managed-flood-routing/)
+- [Mesh Broadcast Algorithm](https://meshtastic.org/docs/overview/mesh-algo/)
 
 ---
 
 ## Estado de Cumplimiento de Requirements
 
-### Key Requirements
+### Key Requirements COMPLETADOS
 
 | Requirement | Estado | Notas |
 |-------------|--------|-------|
-| **Fork Meshtastic y simplificar** | Implementado desde cero | Approach alternativo más eficiente |
+| **Fork Meshtastic y simplificar** | Implementado desde cero | Acercamiento más eficiente con algoritmo completo |
 | **Compatibilidad ESP32-S3** | Completado | XIAO ESP32S3 específicamente |
 | **Easy to flash** | Completado | PlatformIO setup sencillo |
-| **Remote configuration** | En progreso | Será parte de Fase 3 (LoRa) |
-| **GitHub documentation** | En progreso | Este README + docs técnicos faltantes |
 | **Remove unnecessary features** | Completado | Solo funciones esenciales |
 | **Lightweight packet format** | Completado | `deviceID,lat,lon,timestamp` |
-| **Mesh rebroadcast** | Planificado | Fase 4 - Random delay incluido |
-| **Battery monitoring** | Planificado | Fase 5 |
+| **Mesh rebroadcast** | **SUPERADO** | **Algoritmo completo Meshtastic** |
 | **EEPROM storage** | Completado | Device ID y GPS interval |
-| **Theoretical mesh estimation** | Planificado | Cálculo basado en Meshtastic |
 
-### System Behavior
+### System Behavior COMPLETADOS
 
 | Behavior | Estado | Notas |
 |----------|--------|-------|
 | **Fully off-grid** | Completado | Sin WiFi/cellular/internet |
 | **Configurable GPS intervals** | Completado | 5-3600 segundos |
 | **Autonomous trackers** | Completado | Operación independiente |
-| **Offline maps visualization** | Planificado | Fase 5 - RECEIVER |
-| **Real mesh testing** | Próximo | Fase 3 - LoRa hardware |
+| **Real mesh testing** | **FUNCIONANDO** | **Demo exitosa realizada** |
 
-### Documentation
+### System Features EN PROGRESO
 
-| Document | Estado | Notas |
-|----------|--------|-------|
-| **User manual** | En progreso | Basado en este README |
-| **Extended technical** | En progreso | Doc técnico empezado con el avance actual |
-| **Setup procedures** | Completado | Sección de instalación |
-| **Packet format details** | Completado | Documentado y implementado |
-| **Troubleshooting** | Completado | Sección troubleshooting |
-| **Clean, commented code** | Completado | Código documentado |
+| Feature | Estado | Progreso |
+|---------|--------|----------|
+| **Remote configuration** | Fase 5 | Arquitectura lista |
+| **Battery monitoring** | Fase 5 | Framework preparado |
+| **Offline maps visualization** | Fase 5 | Para RECEIVER |
+| **Theoretical mesh estimation** | Fase 5 | Cálculo basado en Meshtastic |
 
+---
 ---
 
 ## Equipo
 
 - **Product Manager/Engineer**: Gilberto Castro Sustaita
-- **Engineer**: Bryan Caleb Martinez Cabazos
+- **Lead Developer/Engineer**: Bryan Caleb Martinez Cavazos
 
 ---
 
-**Última actualización**: Junio 17, 2025  
-**Versión del firmware**: 1.0.0  
-**Estado del proyecto**: FASE 2 COMPLETADA - FASE 3 EN PROGRESO
+**Última actualización**: Junio 19, 2025  
+**Estado del proyecto**: **FASE 3 COMPLETADA + MESH FUNCIONAL**
