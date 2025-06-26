@@ -14,7 +14,7 @@
  */
 
 // Versión del firmware - se actualiza con cada release
-#define FIRMWARE_VERSION "1.0.0"
+#define FIRMWARE_VERSION "2.1.0"
 
 // Timeout en milisegundos para confirmaciones de usuario
 #define CONFIRMATION_TIMEOUT 10000
@@ -48,7 +48,6 @@ ConfigManager::ConfigManager() {
  */
 void ConfigManager::begin() {
     // Inicializar sistema de preferencias con namespace "mesh-config"
-    // El namespace permite separar nuestros datos de otras aplicaciones
     if (!preferences.begin("mesh-config", false)) {
         Serial.println("[ERROR] No se pudo inicializar sistema de preferencias");
         return;
@@ -62,13 +61,11 @@ void ConfigManager::begin() {
     
     // Lógica de arranque: determinar estado inicial
     if (!config.configValid) {
-        // No hay configuración válida - ir directo a modo configuración
         currentState = STATE_CONFIG_MODE;
         Serial.println("[INFO] Dispositivo sin configurar. Entrando en modo configuración.");
         Serial.println("[INFO] Use el comando 'HELP' para ver comandos disponibles.");
         printPrompt();
     } else {
-        // Hay configuración válida - mostrar info y dar opción de reconfigurar
         Serial.println("[INFO] Configuración válida encontrada.");
         printConfig();
         Serial.println("[INFO] Iniciando en modo operativo en 5 segundos...");
@@ -78,13 +75,12 @@ void ConfigManager::begin() {
         unsigned long startTime = millis();
         while (millis() - startTime < STARTUP_CONFIG_WAIT) {
             if (Serial.available()) {
-                // Usuario envió comando - entrar en modo configuración
                 currentState = STATE_CONFIG_MODE;
                 Serial.println("\n[INFO] Entrando en modo configuración.");
                 printPrompt();
                 return;
             }
-            delay(100);  // Pequeña pausa para no sobrecargar el CPU
+            delay(100);
         }
         
         // No se recibieron comandos - iniciar modo operativo
@@ -93,12 +89,8 @@ void ConfigManager::begin() {
     }
 }
 
-
 /*
  * CARGA DE CONFIGURACIÓN DESDE EEPROM
- * 
- * Lee todos los parámetros guardados anteriormente y los valida.
- * Si algún parámetro crítico está ausente, marca la configuración como inválida.
  */
 void ConfigManager::loadConfig() {
     // Cargar cada parámetro con valores por defecto si no existen
@@ -106,14 +98,14 @@ void ConfigManager::loadConfig() {
     config.deviceID = preferences.getUShort("deviceID", 0);
     config.gpsInterval = preferences.getUShort("gpsInterval", 30);
     config.maxHops = preferences.getUChar("maxHops", 3);
+    config.dataMode = (DataDisplayMode)preferences.getUChar("dataMode", DATA_MODE_ADMIN); // Default ADMIN
     config.configValid = preferences.getBool("configValid", false);
     
     // Establecer versión del firmware actual
     strncpy(config.version, FIRMWARE_VERSION, sizeof(config.version) - 1);
-    config.version[sizeof(config.version) - 1] = '\0';  // Asegurar terminación
+    config.version[sizeof(config.version) - 1] = '\0';
     
-    // Validación adicional: verificar que parámetros críticos sean válidos
-    // Un dispositivo necesita al menos un rol y un ID para funcionar
+    // Validación adicional
     if (config.role == ROLE_NONE || config.deviceID == 0) {
         config.configValid = false;
     }
@@ -121,9 +113,6 @@ void ConfigManager::loadConfig() {
 
 /*
  * GUARDADO DE CONFIGURACIÓN EN EEPROM
- * 
- * Persiste todos los parámetros de configuración en memoria no volátil.
- * Esto asegura que la configuración se mantenga entre reinicios.
  */
 void ConfigManager::saveConfig() {
     // Guardar cada parámetro en su clave específica
@@ -131,6 +120,7 @@ void ConfigManager::saveConfig() {
     preferences.putUShort("deviceID", config.deviceID);
     preferences.putUShort("gpsInterval", config.gpsInterval);
     preferences.putUChar("maxHops", config.maxHops);
+    preferences.putUChar("dataMode", config.dataMode); // Guardar modo de datos
     preferences.putBool("configValid", config.configValid);
     
     Serial.println("[OK] Configuración guardada exitosamente.");
@@ -138,22 +128,16 @@ void ConfigManager::saveConfig() {
 
 /*
  * PROCESADOR PRINCIPAL DE COMANDOS SERIALES
- * 
- * Este método se ejecuta continuamente y procesa cualquier comando
- * recibido por el puerto serial. Incluye parsing, validación y ejecución.
  */
 void ConfigManager::processSerialInput() {
-    // Verificar si hay datos disponibles en el puerto serial
     if (!Serial.available()) {
         return;
     }
     
-    // Leer comando completo hasta encontrar nueva línea
     String input = Serial.readStringUntil('\n');
-    input.trim();           // Eliminar espacios en blanco
-    input.toUpperCase();    // Convertir a mayúsculas para consistencia
+    input.trim();
+    input.toUpperCase();
     
-    // Ignorar comandos vacíos
     if (input.length() == 0) {
         printPrompt();
         return;
@@ -163,14 +147,10 @@ void ConfigManager::processSerialInput() {
     Serial.println(">" + input);
     
     /*
-     * PARSER DE COMANDOS
-     * 
-     * Cada comando tiene su propio handler que valida parámetros
-     * y ejecuta la acción correspondiente.
+     * PARSER DE COMANDOS - ACTUALIZADO CON CONFIG_DATA_MODE
      */
     
     if (input.startsWith("CONFIG_ROLE ")) {
-        // Extraer valor después del espacio
         handleConfigRole(input.substring(12));
     }
     else if (input.startsWith("CONFIG_DEVICE_ID ")) {
@@ -181,6 +161,13 @@ void ConfigManager::processSerialInput() {
     }
     else if (input.startsWith("CONFIG_MAX_HOPS ")) {
         handleConfigMaxHops(input.substring(16));
+    }
+    else if (input.startsWith("CONFIG_DATA_MODE ")) {
+        handleConfigDataMode(input.substring(17));
+    }
+    else if (input.startsWith("MODE ")) {
+        // NUEVO: Comando para cambiar modo durante operación
+        handleModeChange(input.substring(5));
     }
     else if (input == "CONFIG_SAVE") {
         handleConfigSave();
@@ -198,23 +185,25 @@ void ConfigManager::processSerialInput() {
         handleHelp();
     }
     else if (input == "START") {
-        // Comando especial para iniciar modo operativo
         if (config.configValid) {
             currentState = STATE_RUNNING;
             Serial.println("[OK] Iniciando modo operativo...");
-            return;  // No mostrar prompt en modo operativo
+            Serial.println("[INFO] Comandos disponibles durante operación: MODE SIMPLE, MODE ADMIN");
+            return;
         } else {
             Serial.println("[ERROR] Configuración inválida. Configure el dispositivo primero.");
         }
     }
     else {
-        // Comando no reconocido
         Serial.println("[ERROR] Comando desconocido. Use 'HELP' para ver comandos disponibles.");
     }
     
-    // Mostrar prompt para el siguiente comando (solo en modo configuración)
     printPrompt();
 }
+
+/*
+ * MANEJADORES DE COMANDOS EXISTENTES
+ */
 
 void ConfigManager::handleConfigRole(String value) {
     value.trim();
@@ -249,7 +238,6 @@ void ConfigManager::handleConfigDeviceID(String value) {
         config.deviceID = id;
         Serial.println("[OK] Device ID configurado: " + String(id));
         
-        // Actualizar validez de configuración
         if (config.role != ROLE_NONE) {
             config.configValid = true;
         }
@@ -280,6 +268,57 @@ void ConfigManager::handleConfigMaxHops(String value) {
     }
 }
 
+/*
+ * ACTUALIZADO: MANEJADOR PARA CONFIG_DATA_MODE
+ */
+void ConfigManager::handleConfigDataMode(String value) {
+    value.trim();
+    
+    if (value == "SIMPLE") {
+        config.dataMode = DATA_MODE_SIMPLE;
+        Serial.println("[OK] Modo de datos configurado: SIMPLE");
+        Serial.println("[INFO] Se mostrará solo: [deviceID, latitude, longitude, batteryvoltage, timestamp]");
+    }
+    else if (value == "ADMIN") {
+        config.dataMode = DATA_MODE_ADMIN;
+        Serial.println("[OK] Modo de datos configurado: ADMIN");
+        Serial.println("[INFO] Se mostrará información completa de mesh y estadísticas");
+    }
+    else {
+        Serial.println("[ERROR] Modo inválido. Use: SIMPLE o ADMIN");
+        Serial.println("[INFO] SIMPLE: Solo packet básico");
+        Serial.println("[INFO] ADMIN: Información completa de mesh");
+        return;
+    }
+}
+
+/*
+ * NUEVO: MANEJADOR PARA CAMBIO DE MODO DURANTE OPERACIÓN
+ */
+void ConfigManager::handleModeChange(String value) {
+    value.trim();
+    
+    if (value == "SIMPLE") {
+        config.dataMode = DATA_MODE_SIMPLE;
+        Serial.println("[OK] Modo cambiado a: SIMPLE");
+        Serial.println("[INFO] Mostrando solo packets básicos");
+        // Auto-guardar cambio
+        preferences.putUChar("dataMode", config.dataMode);
+    }
+    else if (value == "ADMIN") {
+        config.dataMode = DATA_MODE_ADMIN;
+        Serial.println("[OK] Modo cambiado a: ADMIN");
+        Serial.println("[INFO] Mostrando información completa");
+        // Auto-guardar cambio
+        preferences.putUChar("dataMode", config.dataMode);
+    }
+    else {
+        Serial.println("[ERROR] Modo inválido. Use: MODE SIMPLE o MODE ADMIN");
+        Serial.println("[INFO] Modo actual: " + getCurrentDataModeString());
+        return;
+    }
+}
+
 void ConfigManager::handleConfigSave() {
     if (!config.configValid) {
         Serial.println("[ERROR] Configuración inválida. Configure ROLE y DEVICE_ID primero.");
@@ -292,9 +331,8 @@ void ConfigManager::handleConfigSave() {
 void ConfigManager::handleConfigReset() {
     Serial.print("[WARNING] ¿Está seguro que desea resetear la configuración? (Y/N): ");
     
-    // Esperar confirmación
     unsigned long startTime = millis();
-    while (millis() - startTime < 10000) {  // 10 segundos timeout
+    while (millis() - startTime < 10000) {
         if (Serial.available()) {
             String confirm = Serial.readStringUntil('\n');
             confirm.trim();
@@ -341,14 +379,40 @@ void ConfigManager::handleHelp() {
     Serial.println("CONFIG_DEVICE_ID <1-999>                 - Configurar ID único");
     Serial.println("CONFIG_GPS_INTERVAL <5-3600>             - Intervalo GPS en segundos");
     Serial.println("CONFIG_MAX_HOPS <1-10>                   - Máximo saltos en mesh");
+    Serial.println("CONFIG_DATA_MODE <SIMPLE|ADMIN>          - Modo de visualización de datos");
     Serial.println("CONFIG_SAVE                              - Guardar configuración");
     Serial.println("CONFIG_RESET                             - Resetear configuración");
     Serial.println("INFO                                     - Información del dispositivo");
     Serial.println("STATUS                                   - Estado actual del sistema");
     Serial.println("START                                    - Iniciar modo operativo");
     Serial.println("HELP                                     - Mostrar esta ayuda");
+    Serial.println("");
+    Serial.println("=== COMANDOS DURANTE OPERACIÓN ===");
+    Serial.println("MODE SIMPLE                              - Cambiar a vista simple");
+    Serial.println("MODE ADMIN                               - Cambiar a vista completa");
+    Serial.println("");
+    Serial.println("=== MODOS DE DATOS ===");
+    Serial.println("SIMPLE: Solo packet [deviceID, lat, lon, battery, timestamp]");
+    Serial.println("ADMIN:  Información completa de mesh y estadísticas");
     Serial.println("============================");
 }
+
+/*
+ * NUEVOS MÉTODOS PARA GESTIÓN DE MODO
+ */
+
+void ConfigManager::setDataMode(DataDisplayMode mode) {
+    config.dataMode = mode;
+    preferences.putUChar("dataMode", config.dataMode);
+}
+
+String ConfigManager::getCurrentDataModeString() {
+    return getDataModeString(config.dataMode);
+}
+
+/*
+ * MÉTODOS UTILITARIOS
+ */
 
 void ConfigManager::printConfig() {
     Serial.println("\n=== CONFIGURACIÓN ACTUAL ===");
@@ -356,6 +420,7 @@ void ConfigManager::printConfig() {
     Serial.println("Device ID: " + String(config.deviceID));
     Serial.println("Intervalo GPS: " + String(config.gpsInterval) + " segundos");
     Serial.println("Máximo saltos: " + String(config.maxHops));
+    Serial.println("Modo de datos: " + getDataModeString(config.dataMode));
     Serial.println("============================");
 }
 
@@ -375,6 +440,7 @@ void ConfigManager::setDefaultConfig() {
     config.deviceID = 0;
     config.gpsInterval = 30;
     config.maxHops = 3;
+    config.dataMode = DATA_MODE_ADMIN;  // Default ADMIN
     config.configValid = false;
     strncpy(config.version, FIRMWARE_VERSION, sizeof(config.version) - 1);
     config.version[sizeof(config.version) - 1] = '\0';
@@ -395,6 +461,14 @@ String ConfigManager::getStateString(SystemState state) {
         case STATE_CONFIG_MODE: return "MODO CONFIGURACIÓN";
         case STATE_RUNNING: return "OPERATIVO";
         case STATE_SLEEP: return "SUSPENDIDO";
+        default: return "DESCONOCIDO";
+    }
+}
+
+String ConfigManager::getDataModeString(DataDisplayMode mode) {
+    switch (mode) {
+        case DATA_MODE_SIMPLE: return "SIMPLE";
+        case DATA_MODE_ADMIN: return "ADMIN";
         default: return "DESCONOCIDO";
     }
 }

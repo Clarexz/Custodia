@@ -1,15 +1,8 @@
 /*
- * GPS.H - Sistema GPS para Custom Meshtastic GPS Tracker
+ * GPS.H - Sistema GPS para Custom Meshtastic GPS Tracker + Battery Monitoring
  * 
- * Este archivo define la interfaz del sistema GPS que maneja la obtención
- * de coordenadas geográficas. Incluye tanto simulación como preparación
- * para módulos GPS reales.
- * 
- * Características:
- * - GPS simulado con múltiples modos de operación
- * - Estructura preparada para GPS real (UART/NMEA)
- * - Validación automática de coordenadas
- * - Manejo de estados de fix GPS
+ * ACTUALIZACIÓN: Agregando soporte para battery voltage para cumplir con
+ * el formato de packet requerido: [deviceID, latitude, longitude, batteryvoltage, timestamp]
  */
 
 #ifndef GPS_H
@@ -18,20 +11,21 @@
 #include <Arduino.h>
 
 /*
- * ESTRUCTURAS DE DATOS GPS
+ * ESTRUCTURAS DE DATOS GPS - ACTUALIZADA
  */
 
-// Estructura principal para almacenar datos GPS (SIMPLIFICADA)
+// Estructura principal para almacenar datos GPS + Battery
 struct GPSData {
     float latitude;          // Latitud en grados decimales (-90 a +90)
     float longitude;         // Longitud en grados decimales (-180 a +180)
     bool hasValidFix;        // True si tenemos posición válida
     uint32_t timestamp;      // Timestamp Unix de la lectura
+    uint16_t batteryVoltage; // NUEVO: Voltage de batería en mV
     uint8_t satellites;      // Número de satélites (solo para diagnóstico interno)
 };
 
 /*
- * MODOS DE SIMULACIÓN GPS
+ * MODOS DE SIMULACIÓN GPS (sin cambios)
  */
 enum GPSSimulationMode {
     GPS_SIM_FIXED = 0,       // Posición fija (para pruebas estáticas)
@@ -42,7 +36,7 @@ enum GPSSimulationMode {
 };
 
 /*
- * ESTADOS DEL GPS
+ * ESTADOS DEL GPS (sin cambios)
  */
 enum GPSStatus {
     GPS_STATUS_OFF = 0,      // GPS apagado/no inicializado
@@ -55,8 +49,7 @@ enum GPSStatus {
 /*
  * CLASE PRINCIPAL - GPSManager
  * 
- * Maneja toda la funcionalidad GPS incluyendo simulación,
- * lectura de coordenadas, validación y formateo de datos.
+ * ACTUALIZADA: Ahora incluye gestión de battery voltage
  */
 class GPSManager {
 private:
@@ -67,13 +60,13 @@ private:
     
     // Variables para simulación
     unsigned long lastUpdateTime;
-    uint16_t updateInterval;     // Intervalo entre actualizaciones en ms
+    uint16_t updateInterval;
     
     // Variables para diferentes modos de simulación
-    float simStartLat, simStartLon;  // Posición inicial de simulación
-    float simDirection;              // Dirección actual (en grados)
-    float simSpeed;                  // Velocidad de simulación (km/h)
-    uint16_t simStepCounter;         // Contador para patrones
+    float simStartLat, simStartLon;
+    float simDirection;
+    float simSpeed;
+    uint16_t simStepCounter;
     
     // Variables para simulación de pérdida de señal
     bool signalLossActive;
@@ -87,6 +80,9 @@ private:
     // Actualiza posición según el modo de simulación
     void updateSimulation();
     
+    // NUEVO: Actualiza battery voltage
+    void updateBatteryVoltage();
+    
     // Modos específicos de simulación
     void updateFixedPosition();
     void updateLinearMovement();
@@ -95,16 +91,14 @@ private:
     void updateSignalLoss();
     
     // Utilidades de simulación
-    void addGPSNoise();              // Agrega ruido realista a coordenadas
-    void updateSatelliteCount();     // Simula cambios en número de satélites
+    void addGPSNoise();
+    void updateSatelliteCount();
     float calculateDistance(float lat1, float lon1, float lat2, float lon2);
     float calculateBearing(float lat1, float lon1, float lat2, float lon2);
     
     /*
      * MÉTODOS PRIVADOS PARA GPS REAL (FUTURO)
      */
-    
-    // Para implementación futura con módulo GPS físico
     void initHardwareGPS();
     bool parseNMEA(String nmeaSentence);
     void checkGPSHardware();
@@ -125,10 +119,10 @@ public:
     void begin(GPSSimulationMode mode);
     
     // Control del GPS
-    void update();                   // Debe llamarse en el loop principal
-    void enable();                   // Enciende el GPS
-    void disable();                  // Apaga el GPS para ahorrar energía
-    void reset();                    // Reinicia el GPS
+    void update();
+    void enable();
+    void disable();
+    void reset();
     
     /*
      * CONFIGURACIÓN DE SIMULACIÓN
@@ -141,40 +135,47 @@ public:
     void setStartPosition(float lat, float lon);
     
     // Configurar parámetros de simulación
-    void setSimulationSpeed(float speedKmh);      // Velocidad para movimiento
-    void setUpdateInterval(uint16_t intervalMs);  // Frecuencia de actualización
-    void setSimulationDirection(float degrees);   // Dirección inicial
+    void setSimulationSpeed(float speedKmh);
+    void setUpdateInterval(uint16_t intervalMs);
+    void setSimulationDirection(float degrees);
     
     // Configurar simulación de pérdida de señal
     void simulateSignalLoss(uint16_t durationSeconds);
     
     /*
-     * OBTENCIÓN DE DATOS (SIMPLIFICADO)
+     * OBTENCIÓN DE DATOS
      */
     
     // Obtener datos GPS actuales
     GPSData getCurrentData();
-    GPSData* getCurrentDataPtr();    // Para acceso directo sin copia
+    GPSData* getCurrentDataPtr();
     
-    // Obtener datos específicos (solo esenciales)
+    // Obtener datos específicos
     float getLatitude();
     float getLongitude();
     bool hasValidFix();
     uint32_t getTimestamp();
     
+    // NUEVO: Obtener datos de battery
+    uint16_t getBatteryVoltage();
+    uint8_t getBatteryPercentage();
+    
     // Estado del GPS (solo para diagnóstico)
     GPSStatus getStatus();
     String getStatusString();
     bool isEnabled();
-    uint8_t getSatelliteCount();     // Solo para debug interno
+    uint8_t getSatelliteCount();
     
     /*
-     * FORMATEO Y CONVERSIÓN DE DATOS (SIMPLIFICADO)
+     * FORMATEO Y CONVERSIÓN DE DATOS - ACTUALIZADO
      */
     
     // Formatear coordenadas para transmisión
     String formatCoordinates();              // Formato: "lat,lon"
-    String formatForTransmission();          // Formato: "deviceID,lat,lon,timestamp"
+    String formatForTransmission();          // Formato: "lat,lon,battery,timestamp"
+    
+    // NUEVO: Formatear packet completo con deviceID
+    String formatPacketWithDeviceID(uint16_t deviceID);  // Formato: "deviceID,lat,lon,battery,timestamp"
     
     // Conversiones básicas
     String latitudeToString(int precision = 6);
@@ -190,8 +191,8 @@ public:
     bool isValidCoordinate(float lat, float lon);
     
     // Calcular distancia entre puntos
-    float distanceTo(float lat, float lon);  // Distancia en metros
-    float bearingTo(float lat, float lon);   // Rumbo en grados
+    float distanceTo(float lat, float lon);
+    float bearingTo(float lat, float lon);
     
     /*
      * DEBUGGING Y DIAGNÓSTICO
@@ -209,13 +210,11 @@ public:
 
 /*
  * INSTANCIA GLOBAL
- * 
- * Se declara aquí y se define en gps.cpp para uso en todo el proyecto
  */
 extern GPSManager gpsManager;
 
 /*
- * CONSTANTES ÚTILES (SIMPLIFICADAS)
+ * CONSTANTES ÚTILES
  */
 
 // Coordenadas de ejemplo (Reynosa, Tamaulipas, México)

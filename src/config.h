@@ -9,6 +9,7 @@
  * - Persistencia en EEPROM usando Preferences
  * - Validación automática de parámetros
  * - Sistema de estados para control de flujo
+ * - ACTUALIZADO: Modo de visualización de datos (SIMPLE/ADMIN) con comandos en tiempo real
  */
 
 #ifndef CONFIG_H
@@ -37,6 +38,12 @@ enum SystemState {
     STATE_SLEEP = 3         // Modo de bajo consumo (futuro)
 };
 
+// Modos de visualización de datos
+enum DataDisplayMode {
+    DATA_MODE_SIMPLE = 0,   // Vista simple: solo packet básico
+    DATA_MODE_ADMIN = 1     // Vista admin: información completa
+};
+
 /*
  * ESTRUCTURAS DE DATOS
  */
@@ -47,6 +54,7 @@ struct DeviceConfig {
     uint16_t deviceID;       // ID único del dispositivo (1-999)
     uint16_t gpsInterval;    // Segundos entre transmisiones GPS (5-3600)
     uint8_t maxHops;         // Máximo número de saltos en mesh (1-10)
+    DataDisplayMode dataMode; // Modo de visualización de datos
     bool configValid;        // Flag que indica si la configuración es válida
     char version[8];         // Versión del firmware para compatibilidad
 };
@@ -84,6 +92,9 @@ private:
     
     // Convierte enum SystemState a string legible
     String getStateString(SystemState state);
+    
+    // Convierte enum DataDisplayMode a string legible
+    String getDataModeString(DataDisplayMode mode);
     
 public:
     /*
@@ -126,6 +137,12 @@ public:
     // CONFIG_MAX_HOPS: Establece máximo de saltos en mesh
     void handleConfigMaxHops(String value);
     
+    // CONFIG_DATA_MODE: Configura modo de visualización de datos (ACTUALIZADO)
+    void handleConfigDataMode(String value);
+    
+    // NUEVO: MODE: Cambia modo durante operación
+    void handleModeChange(String value);
+    
     // CONFIG_SAVE: Guarda configuración en EEPROM
     void handleConfigSave();
     
@@ -156,6 +173,21 @@ public:
     
     // Cambia el estado del sistema
     void setState(SystemState state) { currentState = state; }
+    
+    // Obtiene modo de visualización actual
+    DataDisplayMode getDataMode() { return config.dataMode; }
+    
+    // Verifica si está en modo simple
+    bool isSimpleMode() { return config.dataMode == DATA_MODE_SIMPLE; }
+    
+    // Verifica si está en modo admin
+    bool isAdminMode() { return config.dataMode == DATA_MODE_ADMIN; }
+    
+    // NUEVO: Cambiar modo directamente (para comandos en tiempo real)
+    void setDataMode(DataDisplayMode mode);
+    
+    // NUEVO: Obtener string del modo actual para confirmación
+    String getCurrentDataModeString();
     
     /*
      * MÉTODOS UTILITARIOS
