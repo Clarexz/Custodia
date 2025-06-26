@@ -47,33 +47,65 @@ void setup() {
 }
 
 void loop() {
-  // ACTUALIZADO: Procesar comandos seriales en TODOS los estados
-  if (Serial.available()) {
+  // CORREGIDO: Procesar comandos especiales durante operación
+  if (Serial.available() && configManager.getState() == STATE_RUNNING) {
     String input = Serial.readStringUntil('\n');
     input.trim();
     input.toUpperCase();
     
     if (input.length() > 0) {
-      // Si estamos en CONFIG_MODE, procesar normalmente
-      if (configManager.getState() == STATE_CONFIG_MODE) {
-        // No hacer nada aquí, será procesado por configManager.processSerialInput() abajo
-      }
-      // NUEVO: Si estamos en RUNNING y es comando MODE, procesarlo
-      else if (configManager.getState() == STATE_RUNNING && input.startsWith("MODE ")) {
-        Serial.println(">" + input); // Echo del comando
+      // Echo del comando
+      Serial.println(">" + input);
+      
+      // Comando MODE durante operación
+      if (input.startsWith("MODE ")) {
         configManager.handleModeChange(input.substring(5));
-        return; // Salir temprano para evitar procesar dos veces
+        return;
       }
-      // Informar sobre comandos disponibles durante operación
-      else if (configManager.getState() == STATE_RUNNING) {
-        Serial.println(">" + input);
-        Serial.println("[INFO] Comandos disponibles: MODE SIMPLE, MODE ADMIN");
-        return; // Salir temprano
+      // NUEVO: Permitir CONFIG_RESET durante operación
+      else if (input == "CONFIG_RESET") {
+        configManager.handleConfigReset();
+        return;
+      }
+      // NUEVO: Permitir volver a CONFIG_MODE
+      else if (input == "CONFIG") {
+        configManager.setState(STATE_CONFIG_MODE);
+        loraInitialized = false;
+        Serial.println("[INFO] Entrando en modo configuración.");
+        return;
+      }
+      // NUEVO: Permitir STATUS durante operación
+      else if (input == "STATUS") {
+        configManager.handleStatus();
+        return;
+      }
+      // NUEVO: Permitir INFO durante operación
+      else if (input == "INFO") {
+        configManager.handleInfo();
+        return;
+      }
+      // NUEVO: Permitir HELP durante operación
+      else if (input == "HELP") {
+        Serial.println("\n=== COMANDOS DURANTE OPERACIÓN ===");
+        Serial.println("MODE SIMPLE                              - Cambiar a vista simple");
+        Serial.println("MODE ADMIN                               - Cambiar a vista completa");
+        Serial.println("CONFIG_RESET                             - Resetear configuración");
+        Serial.println("CONFIG                                   - Volver a modo configuración");
+        Serial.println("STATUS                                   - Estado actual del sistema");
+        Serial.println("INFO                                     - Información del dispositivo");
+        Serial.println("HELP                                     - Mostrar esta ayuda");
+        Serial.println("============================");
+        return;
+      }
+      // Informar sobre comandos disponibles para otros comandos
+      else {
+        Serial.println("[INFO] Comandos disponibles: MODE SIMPLE, MODE ADMIN, CONFIG_RESET, CONFIG, STATUS, INFO, HELP");
+        return;
       }
     }
   }
   
-  // Procesar comandos seriales del modo configuración
+  // Procesar comandos seriales normalmente (CONFIG_MODE y otros)
   configManager.processSerialInput();
   
   // Verificar si necesitamos inicializar LoRa después de configuración

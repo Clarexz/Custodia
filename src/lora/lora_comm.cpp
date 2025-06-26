@@ -3,6 +3,8 @@
  * 
  * Este archivo contiene las funciones de comunicación básica:
  * envío y recepción de packets sin la lógica mesh.
+ * 
+ * ACTUALIZADO: Debug output solo en modo ADMIN
  */
 
 #include "../lora.h"
@@ -33,12 +35,18 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
 
 bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, uint8_t payloadLength, uint16_t destinationID) {
     if (status != LORA_STATUS_READY) {
-        Serial.println("[LoRa] ERROR: Sistema no está listo para transmitir");
+        // SOLO mostrar error en modo ADMIN
+        if (configManager.isAdminMode()) {
+            Serial.println("[LoRa] ERROR: Sistema no está listo para transmitir");
+        }
         return false;
     }
     
     if (payloadLength > LORA_MAX_PAYLOAD_SIZE) {
-        Serial.println("[LoRa] ERROR: Payload demasiado grande");
+        // SOLO mostrar error en modo ADMIN
+        if (configManager.isAdminMode()) {
+            Serial.println("[LoRa] ERROR: Payload demasiado grande");
+        }
         return false;
     }
     
@@ -74,8 +82,12 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
     
     if (state == RADIOLIB_ERR_NONE) {
         stats.packetsSent++;
-        Serial.println("[LoRa] Packet enviado exitosamente");
-        Serial.println("[LoRa] PacketID: " + String(packet.packetID) + ", Air time: " + String(airTime) + " ms");
+        
+        // SOLO mostrar debug en modo ADMIN
+        if (configManager.isAdminMode()) {
+            Serial.println("[LoRa] Packet enviado exitosamente");
+            Serial.println("[LoRa] PacketID: " + String(packet.packetID) + ", Air time: " + String(airTime) + " ms");
+        }
         
         // Volver a modo recepción
         radio.startReceive();
@@ -83,8 +95,12 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
         return true;
     } else {
         stats.packetsLost++;
-        Serial.println("[LoRa] ERROR: Fallo en transmisión");
-        Serial.println("[LoRa] Error code: " + String(state));
+        
+        // SOLO mostrar error en modo ADMIN
+        if (configManager.isAdminMode()) {
+            Serial.println("[LoRa] ERROR: Fallo en transmisión");
+            Serial.println("[LoRa] Error code: " + String(state));
+        }
         
         // Volver a modo recepción
         radio.startReceive();
@@ -94,7 +110,7 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
 }
 
 /*
- * RECEPCIÓN Y PROCESAMIENTO DE PACKETS
+ * RECEPCIÓN Y PROCESAMIENTO DE PACKETS - CORREGIDO PARA MODO SIMPLE
  */
 bool LoRaManager::receivePacket(LoRaPacket* packet) {
     if (!packet) return false;
@@ -110,23 +126,33 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
         // Validar packet básico
         if (!validatePacket(packet)) {
             stats.packetsLost++;
-            Serial.println("[LoRa] Packet inválido (checksum)");
+            // SOLO mostrar en modo ADMIN
+            if (configManager.isAdminMode()) {
+                Serial.println("[LoRa] Packet inválido (checksum)");
+            }
             return false;
         }
         
         // Verificar duplicados
         if (shouldFilterReceived(packet)) {
             stats.duplicatesIgnored++;
-            Serial.println("[LoRa] Packet duplicado ignorado (sourceID=" + String(packet->sourceID) + ", packetID=" + String(packet->packetID) + ")");
+            // SOLO mostrar en modo ADMIN
+            if (configManager.isAdminMode()) {
+                Serial.println("[LoRa] Packet duplicado ignorado (sourceID=" + String(packet->sourceID) + ", packetID=" + String(packet->packetID) + ")");
+            }
             return false;  // Packet duplicado, ignorar
         }
         
         // Packet válido y nuevo
         stats.packetsReceived++;
-        Serial.println("[LoRa] Packet válido recibido");
-        Serial.println("[LoRa] RSSI: " + String(stats.lastRSSI) + " dBm");
-        Serial.println("[LoRa] SNR: " + String(stats.lastSNR) + " dB");
-        Serial.println("[LoRa] Source: " + String(packet->sourceID) + ", Hops: " + String(packet->hops) + "/" + String(packet->maxHops));
+        
+        // SOLO mostrar debug en modo ADMIN
+        if (configManager.isAdminMode()) {
+            Serial.println("[LoRa] Packet válido recibido");
+            Serial.println("[LoRa] RSSI: " + String(stats.lastRSSI) + " dBm");
+            Serial.println("[LoRa] SNR: " + String(stats.lastSNR) + " dB");
+            Serial.println("[LoRa] Source: " + String(packet->sourceID) + ", Hops: " + String(packet->hops) + "/" + String(packet->maxHops));
+        }
         
         // Agregar a seen packets para evitar futuras retransmisiones
         addToRecentPackets(packet->sourceID, packet->packetID);
@@ -134,7 +160,10 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
         // Verificar si debe retransmitirse
         if (perhapsRebroadcast(packet)) {
             stats.rebroadcasts++;
-            Serial.println("[LoRa] Packet programado para retransmisión");
+            // SOLO mostrar en modo ADMIN
+            if (configManager.isAdminMode()) {
+                Serial.println("[LoRa] Packet programado para retransmisión");
+            }
         }
         
         // Procesar contenido según tipo de mensaje
@@ -145,25 +174,37 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                 uint32_t timestamp;
                 uint16_t sourceID;
                 if (processGPSPacket(packet, &lat, &lon, &timestamp, &sourceID)) {
-                    Serial.println("[LoRa] GPS recibido de device " + String(sourceID) + 
-                                 ": " + String(lat, 6) + "," + String(lon, 6));
+                    // SOLO mostrar debug en modo ADMIN
+                    if (configManager.isAdminMode()) {
+                        Serial.println("[LoRa] GPS recibido de device " + String(sourceID) + 
+                                     ": " + String(lat, 6) + "," + String(lon, 6));
+                    }
                 }
                 break;
                 
             case MSG_HEARTBEAT:
-                Serial.println("[LoRa] Heartbeat recibido de device " + String(packet->sourceID));
+                // SOLO mostrar en modo ADMIN
+                if (configManager.isAdminMode()) {
+                    Serial.println("[LoRa] Heartbeat recibido de device " + String(packet->sourceID));
+                }
                 break;
                 
             default:
-                Serial.println("[LoRa] Packet tipo desconocido: " + String(packet->messageType));
+                // SOLO mostrar en modo ADMIN
+                if (configManager.isAdminMode()) {
+                    Serial.println("[LoRa] Packet tipo desconocido: " + String(packet->messageType));
+                }
                 break;
         }
         
         return true;
         
     } else {
-        Serial.println("[LoRa] ERROR: Fallo en recepción");
-        Serial.println("[LoRa] Error code: " + String(state));
+        // SOLO mostrar error en modo ADMIN
+        if (configManager.isAdminMode()) {
+            Serial.println("[LoRa] ERROR: Fallo en recepción");
+            Serial.println("[LoRa] Error code: " + String(state));
+        }
         return false;
     }
 }
@@ -201,6 +242,11 @@ void LoRaManager::update() {
     if (millis() - lastCleanup >= 30000) {
         cleanOldPackets();
         lastCleanup = millis();
+        
+        // SOLO mostrar en modo ADMIN
+        if (configManager.isAdminMode()) {
+            Serial.println("[LoRa] Packets en memoria: " + String(recentBroadcasts.size()));
+        }
     }
     
     // Verificar si hay packets recibidos
