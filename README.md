@@ -2,8 +2,8 @@
 
 **Firmware personalizado basado en Meshtastic para tracking GPS off-grid**
 
-![Estado del Proyecto](https://img.shields.io/badge/Estado-Fase%203%20COMPLETADA%20+%20MESH%20FUNCIONAL-brightgreen)
-![Versión](https://img.shields.io/badge/Versión-2.0.0-blue)
+![Estado del Proyecto](https://img.shields.io/badge/Estado-Modularizaci%C3%B3n%20en%20Progreso-orange)
+![Versión](https://img.shields.io/badge/Versión-2.1.0-blue)
 ![Plataforma](https://img.shields.io/badge/Plataforma-ESP32--S3-orange)
 ![Framework](https://img.shields.io/badge/Framework-Arduino-teal)
 ![Algoritmo](https://img.shields.io/badge/Algoritmo-Meshtastic%20Completo-purple)
@@ -12,7 +12,7 @@
 
 ## Descripción del Proyecto
 
-Sistema de tracking GPS completamente off-grid usando una red mesh LoRa con **algoritmo completo de Meshtastic**. Implementación que integra el sistema de Managed Flood Routing.
+Sistema de tracking GPS completamente off-grid usando una red mesh LoRa con **algoritmo de Meshtastic**. Implementación que integra el sistema de Managed Flood Routing desarrollado específicamente para asset tracking.
 
 ### Objetivo Principal
 Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para diferentes roles en una red mesh LoRa, con configuración completa via comandos seriales y operación autónoma **con mesh routing**.
@@ -21,9 +21,9 @@ Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para di
 - **Un solo firmware** para todos los dispositivos
 - **Configuración por roles** via comandos seriales
 - **Persistencia en EEPROM** para configuraciones
-- **GPS simulado** con múltiples modos
+- **GPS simulado realista** con múltiples modos
 - **Sistema de estados** bien definido
-- **NUEVO: Algoritmo Meshtastic integrado**
+- **Algoritmo Meshtastic integrado** con SNR-based delays y role priority
 
 ---
 
@@ -32,9 +32,23 @@ Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para di
 | Componente | Modelo | Estado | Función |
 |------------|--------|--------|---------|
 | **Microcontrolador** | XIAO ESP32S3 | Implementado | Control principal y procesamiento |
-| **Módulo LoRa** | Wio SX1262 | **MESH FUNCIONAL (faltan pruebas)** | Comunicación mesh de largo alcance (faltan pruebas) |
-| **Pantalla** | ESP32-compatible TFT | Futuro | Visualización (solo RECEIVER) |
+| **Módulo LoRa** | Wio SX1262 | **MESH FUNCIONAL** | Comunicación mesh de largo alcance |
+| **Pantalla** | ESP32-compatible TFT | Planificado | Visualización (solo RECEIVER) |
 | **GPS** | Módulo compatible UART | Simulado | Geolocalización |
+
+**Conexiones XIAO ESP32S3 + Wio SX1262:**
+```
+XIAO ESP32S3    →    Wio SX1262
+GPIO 7 (SCK)    →    SCK
+GPIO 8 (MISO)   →    MISO  
+GPIO 9 (MOSI)   →    MOSI
+GPIO 41 (CS)    →    NSS
+GPIO 39         →    DIO1
+GPIO 42         →    RESET
+GPIO 40         →    BUSY
+3.3V            →    VCC
+GND             →    GND
+```
 
 ---
 
@@ -44,19 +58,19 @@ Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para di
 - Transmite su posición GPS periódicamente
 - Opera autónomamente sin interfaz de usuario
 - **Mesh routing con CLIENT priority**
-- **Estado actual**: **Mesh operativo con algoritmo Meshtastic**
+- **Estado actual**: Mesh operativo con algoritmo Meshtastic completo
 
 ### REPEATER
-- Actúa como extensor de rango
+- Actúa como extensor de rango para la red mesh
 - Retransmite mensajes de otros dispositivos con **ROUTER priority**
-- **SNR-based intelligent delays**
-- **Estado actual**: **Lógica de Meshtastic implementada**
+- **SNR-based intelligent delays** para optimización de red
+- **Estado actual**: Lógica de Meshtastic implementada y funcional
 
 ### RECEIVER
-- Recibe y visualiza posiciones GPS de toda la red
-- **Duplicate detection y mesh statistics**
-- Puede configurar otros dispositivos remotamente (futuro)
-- **Estado actual**: **Mesh operativo, pendiente mapas offline**
+- Recibe y visualiza posiciones GPS de toda la red mesh
+- **Duplicate detection y mesh statistics** integradas
+- Puede configurar otros dispositivos remotamente (planificado)
+- **Estado actual**: Mesh operativo, mapas offline en desarrollo
 
 ---
 
@@ -73,15 +87,42 @@ Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para di
 - [x] **Documentación integrada** (comando HELP)
 - [x] **Indicadores visuales LED** según estado/rol
 
+**Comandos disponibles:**
+```bash
+CONFIG_ROLE <TRACKER|REPEATER|RECEIVER>  # Configurar rol del dispositivo
+CONFIG_DEVICE_ID <1-999>                 # Configurar ID único
+CONFIG_GPS_INTERVAL <5-3600>             # Intervalo GPS en segundos
+CONFIG_MAX_HOPS <1-10>                   # Máximo saltos en mesh
+CONFIG_SAVE                              # Guardar configuración
+CONFIG_RESET                             # Resetear configuración
+INFO                                     # Información del dispositivo
+STATUS                                   # Estado y configuración actual
+START                                    # Iniciar modo operativo
+HELP                                     # Mostrar todos los comandos
+```
+
 ### **FASE 2: GPS Simulado** - COMPLETADA
 
 **Funcionalidades implementadas:**
-- [x] **Sistema GPS** con 5 modos de simulación
+- [x] **Sistema GPS completo** con 5 modos de simulación
 - [x] **Integración con configuración** existente
 - [x] **Diferentes comportamientos GPS** según rol del dispositivo
 - [x] **Transmisión periódica** de coordenadas en modo TRACKER
 - [x] **Validación y formateo** de datos GPS
 - [x] **Fórmula de Haversine** para cálculos geográficos precisos
+
+**Modos de simulación GPS:**
+- **GPS_SIM_FIXED**: Posición fija
+- **GPS_SIM_LINEAR**: Movimiento lineal
+- **GPS_SIM_CIRCULAR**: Movimiento circular
+- **GPS_SIM_RANDOM_WALK**: Caminata aleatoria
+- **GPS_SIM_SIGNAL_LOSS**: Pérdida/recuperación de señal
+
+**Formato del packet GPS:**
+```
+deviceID,latitude,longitude,timestamp
+```
+**Ejemplo**: `001,25.302677,-98.277664,1718661234`
 
 ### **FASE 3: LoRa + Mesh Completo** - COMPLETADA
 
@@ -104,18 +145,11 @@ Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para di
 - **Packet Memory**: 100 packets, 5 minutos
 - **Role Priority**: REPEATER = ROUTER priority
 
-### **FASE 4: Mesh Routing Avanzado** - 90% COMPLETADO
-- [x] ~~Algoritmo de routing básico~~ **Meshtastic completo**
-- [x] ~~Manejo de colisiones con random delay~~ **SNR-based delays**
-- [x] ~~Implementación de TTL~~ **Hop limit management**
-- [x] **Estadísticas básicas de red** **Implementado**
+### **FASE 4: Modularización de Código** - COMPLETADA
 
-**Lo que falta (opcional):**
-- [ ] Estadísticas avanzadas de topología de red
-- [ ] Mesh health monitoring
-- [ ] Network discovery automático
+**Objetivo**: Dividir el archivo `lora.cpp` (800+ líneas) en módulos más pequeños y manejables.
 
-### **FASE 5: Características Avanzadas** - PENDIENTE
+### **FASE 5: Características Avanzadas** - EN PROGRESO
 
 | Característica | Estado | Prioridad | Notas |
 |----------------|--------|-----------|-------|
@@ -140,7 +174,7 @@ Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para di
 1. **Clonar el repositorio**
    ```bash
    git clone https://github.com/Clarexz/meshtastic_custom.git
-   cd custom-meshtastic-custom
+   cd meshtastic_custom
    ```
 
 2. **Abrir en PlatformIO**
@@ -155,22 +189,6 @@ Crear un firmware unificado que permita configurar dispositivos ESP32-S3 para di
 4. **Configuración inicial**
    - Click en "Monitor" (115200 baud)
    - Seguir secuencia de configuración
-
-### Hardware Setup LoRa
-
-**Conexiones XIAO ESP32S3 + Wio SX1262:**
-```
-XIAO ESP32S3    →    Wio SX1262
-GPIO 7 (SCK)    →    SCK
-GPIO 8 (MISO)   →    MISO  
-GPIO 9 (MOSI)   →    MOSI
-GPIO 41 (CS)    →    NSS
-GPIO 39         →    DIO1
-GPIO 42         →    RESET
-GPIO 40         →    BUSY
-3.3V            →    VCC
-GND             →    GND
-```
 
 ---
 
@@ -260,26 +278,14 @@ src/
 ├── gps.h            # Sistema GPS - Declaraciones
 ├── gps.cpp          # Sistema GPS - Implementación
 ├── lora.h           # Sistema LoRa + Mesh - Declaraciones
-└── lora.cpp         # Sistema LoRa + Mesh - Implementación
+├── lora.cpp         # Sistema LoRa + Mesh - Implementación
+└── mesh/            # Módulos del algoritmo Meshtastic
+    ├── mesh_types.h         # Estructuras compartidas
+    ├── packet_manager.h/cpp # Gestión de packets y duplicate detection
+    └── flooding_router.h/cpp # Algoritmo de Managed Flood Routing
 
 platformio.ini        # Configuración del proyecto PlatformIO
 README.md             # Esta documentación
-```
-
-### Flujo de Datos Enhanced
-
-```
-[Startup] → [Config Manager] → [EEPROM Load] → [Estado Inicial]
-                                    ↓
-[CONFIG_MODE] ←→ [Comandos Seriales] ←→ [Validación]
-      ↓                                      ↓
-[CONFIG_SAVE] → [EEPROM] → [START] → [RUNNING]
-                                        ↓
-                              [GPS Manager] → [Simulación]
-                                        ↓
-                              [LoRa Manager] → [Meshtastic Algorithm]
-                                        ↓
-                     [Duplicate Detection] → [SNR Delays] → [Mesh Routing]
 ```
 
 ### Módulos Principales
@@ -293,27 +299,18 @@ README.md             # Esta documentación
 
 #### **GPSManager** (`gps.h/cpp`)
 **Responsabilidades:**
-- Simulación GPS realista
+- Simulación GPS realista con múltiples modos
 - Cálculos geográficos (Haversine)
 - Formateo de datos para transmisión
-- Diferentes modos de movimiento
+- Diferentes patrones de movimiento
 
-#### **LoRaManager** (`lora.h/cpp`) - **ENHANCED CON MESHTASTIC**
-**Responsabilidades principales:**
-- Hardware SX1262 management
-- Protocolo de packets optimizado
-- **Algoritmo completo de Meshtastic:**
-  - `wasSeenRecently()` - Duplicate detection
-  - `perhapsRebroadcast()` - Smart rebroadcast
-  - `getTxDelayMsecWeighted()` - SNR-based delays
-  - Role-based priority management
-- Estadísticas mesh completas
+## (Falta agregar info de los modulos de lora)
 
 ---
 
 ## Algoritmo Meshtastic Implementado
 
-### Core Components
+### Componentes Principales
 
 **Duplicate Detection:**
 ```cpp
@@ -327,7 +324,7 @@ bool wasSeenRecently(sourceID, packetID);
 uint32_t delay = getTxDelayMsecWeighted(snr, role);
 ```
 
-**⚡ Role Priority:**
+**Role Priority:**
 ```cpp
 // REPEATER = ROUTER priority (160ms menos delay)
 if (role == ROLE_REPEATER) delay = base_delay;
@@ -381,10 +378,10 @@ struct LoRaStats {
 
 **"Sistema no está listo para transmitir"**
 ```bash
-# El nuevo código debería auto-reparar esto:
-1. El sistema detecta automáticamente LoRa no inicializado
-2. Reinicializa LoRa después de configuración
-3. Si persiste, verificar hardware
+# El sistema detecta automáticamente LoRa no inicializado:
+1. Reinicializa LoRa después de configuración
+2. Si persiste, verificar hardware y conexiones
+3. Verificar que el device ID sea válido (1-999)
 ```
 
 ### Problemas de Mesh
@@ -396,36 +393,60 @@ struct LoRaStats {
 2. Mismos parámetros LoRa (SF7, BW125, etc.)
 3. Distancia apropiada (empezar <5 metros)
 4. Verificar que ambos estén transmitiendo
+5. Verificar roles: TRACKER envía, RECEIVER recibe
+```
+
+### Problemas de Configuración
+
+**"Sin fix GPS - Esperando señal..."**
+```bash
+# Solución: GPS simulado debería tener fix automático
+1. Presionar botón RESET (R)
+2. O enviar cualquier comando para volver a CONFIG_MODE
+3. Luego START nuevamente
+4. Verificar que hasValidFix = true en logs
 ```
 
 ---
 
-## Roadmap del Proyecto
+## Estado de Cumplimiento de Requirements
 
-### Próximos Pasos (Fase 5)
+### Key Requirements COMPLETADOS
 
-| Característica | Tiempo estimado | Prioridad |
-|----------------|-----------------|-----------|
-| **Remote configuration** | 2-3 días | Alta |
-| **Battery monitoring** | 1 día | Media |
-| **Power optimization** | 2 días | Media |
-| **Mapas offline** | 1 semana | Baja |
-| **Network analytics** | 3 días | Baja |
+| Requirement | Estado | Notas |
+|-------------|--------|-------|
+| **Fork Meshtastic y simplificar** | Implementado desde cero | Algoritmo completo con approach más eficiente |
+| **Compatibilidad ESP32-S3** | Completado | XIAO ESP32S3 específicamente |
+| **Easy to flash** | Completado | PlatformIO setup sencillo |
+| **Remote configuration** | Planificado | Será parte de Fase 5 |
+| **GitHub documentation** | Completado | README detallado + comentarios en código |
+| **Remove unnecessary features** | Completado | Solo funciones esenciales para tracking |
+| **Lightweight packet format** | Completado | `deviceID,lat,lon,timestamp` |
+| **Mesh rebroadcast** | **SUPERADO** | **Algoritmo completo Meshtastic** |
+| **Battery monitoring** | Planificado | Fase 5 |
+| **EEPROM storage** | Completado | Device ID y GPS interval |
+| **Theoretical mesh estimation** | Planificado | Cálculo basado en Meshtastic |
 
-### Mejoras Arquitecturales Planeadas
+### System Behavior COMPLETADOS
 
-**Modularización del código:**
-```
-src/
-├── lora/
-│   ├── radio_interface.h/cpp
-│   └── lora_manager.h/cpp  
-├── mesh/
-│   ├── flooding_router.h/cpp
-│   ├── packet_manager.h/cpp
-│   └── mesh_types.h
-└── main.cpp
-```
+| Behavior | Estado | Notas |
+|----------|--------|-------|
+| **Fully off-grid** | Completado | Sin WiFi/cellular/internet |
+| **Configurable GPS intervals** | Completado | 5-3600 segundos |
+| **Autonomous trackers** | Completado | Operación independiente |
+| **Offline maps visualization** | Planificado | Fase 5 - RECEIVER |
+| **Real mesh testing** | **FUNCIONANDO** | **Mesh routing operativo** |
+
+### Documentation COMPLETADA
+
+| Document | Estado | Notas |
+|----------|--------|-------|
+| **User manual** | Completado | Basado en este README |
+| **Extended technical** | En progreso | Comentarios detallados en código |
+| **Setup procedures** | Completado | Sección de instalación detallada |
+| **Packet format details** | Completado | Documentado y implementado |
+| **Troubleshooting** | Completado | Sección troubleshooting completa |
+| **Clean, commented code** | Completado | Código documentado extensivamente |
 
 ---
 
@@ -436,46 +457,12 @@ src/
 - [ESP32-S3 Datasheet](https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf)
 - [SX1262 Datasheet](https://www.semtech.com/products/wireless-rf/lora-transceivers/sx1262)
 - [RadioLib Documentation](https://github.com/jgromes/RadioLib)
+- [PlatformIO Documentation](https://docs.platformio.org/)
 
 ### Algoritmo Meshtastic
 - [Managed Flood Routing Explained](https://meshtastic.org/blog/why-meshtastic-uses-managed-flood-routing/)
 - [Mesh Broadcast Algorithm](https://meshtastic.org/docs/overview/mesh-algo/)
 
----
-
-## Estado de Cumplimiento de Requirements
-
-### Key Requirements COMPLETADOS
-
-| Requirement | Estado | Notas |
-|-------------|--------|-------|
-| **Fork Meshtastic y simplificar** | Implementado desde cero | Acercamiento más eficiente con algoritmo completo |
-| **Compatibilidad ESP32-S3** | Completado | XIAO ESP32S3 específicamente |
-| **Easy to flash** | Completado | PlatformIO setup sencillo |
-| **Remove unnecessary features** | Completado | Solo funciones esenciales |
-| **Lightweight packet format** | Completado | `deviceID,lat,lon,timestamp` |
-| **Mesh rebroadcast** | **SUPERADO** | **Algoritmo completo Meshtastic** |
-| **EEPROM storage** | Completado | Device ID y GPS interval |
-
-### System Behavior COMPLETADOS
-
-| Behavior | Estado | Notas |
-|----------|--------|-------|
-| **Fully off-grid** | Completado | Sin WiFi/cellular/internet |
-| **Configurable GPS intervals** | Completado | 5-3600 segundos |
-| **Autonomous trackers** | Completado | Operación independiente |
-| **Real mesh testing** | **FUNCIONANDO** | **Demo exitosa realizada** |
-
-### System Features EN PROGRESO
-
-| Feature | Estado | Progreso |
-|---------|--------|----------|
-| **Remote configuration** | Fase 5 | Arquitectura lista |
-| **Battery monitoring** | Fase 5 | Framework preparado |
-| **Offline maps visualization** | Fase 5 | Para RECEIVER |
-| **Theoretical mesh estimation** | Fase 5 | Cálculo basado en Meshtastic |
-
----
 ---
 
 ## Equipo
@@ -484,6 +471,3 @@ src/
 - **Lead Developer/Engineer**: Bryan Caleb Martinez Cavazos
 
 ---
-
-**Última actualización**: Junio 19, 2025  
-**Estado del proyecto**: **FASE 3 COMPLETADA + MESH FUNCIONAL**
