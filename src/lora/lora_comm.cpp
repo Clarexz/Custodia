@@ -1,0 +1,213 @@
+/*
+ * LORA_COMM.CPP - Transmisión y Recepción Básica
+ * 
+ * Este archivo contiene las funciones de comunicación básica:
+ * envío y recepción de packets sin la lógica mesh.
+ */
+
+#include "../lora.h"
+#include "../config.h"
+
+/*
+ * ENVÍO DE DATOS GPS
+ */
+bool LoRaManager::sendGPSData(float latitude, float longitude, uint32_t timestamp) {
+    return sendGPSData(latitude, longitude, timestamp, LORA_BROADCAST_ADDR);
+}
+
+bool LoRaManager::sendGPSData(float latitude, float longitude, uint32_t timestamp, uint16_t destinationID) {
+    // Crear payload GPS
+    GPSPayload gpsPayload;
+    gpsDataToPayload(latitude, longitude, timestamp, &gpsPayload);
+    
+    // Enviar como packet GPS
+    return sendPacket(MSG_GPS_DATA, (uint8_t*)&gpsPayload, sizeof(GPSPayload), destinationID);
+}
+
+/*
+ * ENVÍO DE PACKET GENÉRICO
+ */
+bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, uint8_t payloadLength) {
+    return sendPacket(msgType, payload, payloadLength, LORA_BROADCAST_ADDR);
+}
+
+bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, uint8_t payloadLength, uint16_t destinationID) {
+    if (status != LORA_STATUS_READY) {
+        Serial.println("[LoRa] ERROR: Sistema no está listo para transmitir");
+        return false;
+    }
+    
+    if (payloadLength > LORA_MAX_PAYLOAD_SIZE) {
+        Serial.println("[LoRa] ERROR: Payload demasiado grande");
+        return false;
+    }
+    
+    // Crear packet
+    LoRaPacket packet;
+    packet.messageType = msgType;
+    packet.sourceID = deviceID;
+    packet.destinationID = destinationID;
+    packet.hops = 0;  // Packet original
+    packet.maxHops = MESHTASTIC_MAX_HOPS;  // Máximo saltos
+    packet.packetID = ++packetCounter;
+    packet.payloadLength = payloadLength;
+    
+    // Copiar payload
+    memcpy(packet.payload, payload, payloadLength);
+    
+    // Calcular checksum
+    packet.checksum = calculateChecksum(&packet);
+    
+    // Agregar a seen packets para evitar retransmitirlos
+    addToRecentPackets(packet.sourceID, packet.packetID);
+    
+    // Cambiar a modo transmisión
+    status = LORA_STATUS_TRANSMITTING;
+    
+    // Transmitir packet
+    unsigned long startTime = millis();
+    int state = radio.transmit((uint8_t*)&packet, sizeof(LoRaPacket));
+    unsigned long airTime = millis() - startTime;
+    
+    // Actualizar estadísticas
+    stats.totalAirTime += airTime;
+    
+    if (state == RADIOLIB_ERR_NONE) {
+        stats.packetsSent++;
+        Serial.println("[LoRa] Packet enviado exitosamente");
+        Serial.println("[LoRa] PacketID: " + String(packet.packetID) + ", Air time: " + String(airTime) + " ms");
+        
+        // Volver a modo recepción
+        radio.startReceive();
+        status = LORA_STATUS_READY;
+        return true;
+    } else {
+        stats.packetsLost++;
+        Serial.println("[LoRa] ERROR: Fallo en transmisión");
+        Serial.println("[LoRa] Error code: " + String(state));
+        
+        // Volver a modo recepción
+        radio.startReceive();
+        status = LORA_STATUS_READY;
+        return false;
+    }
+}
+
+/*
+ * RECEPCIÓN Y PROCESAMIENTO DE PACKETS
+ */
+bool LoRaManager::receivePacket(LoRaPacket* packet) {
+    if (!packet) return false;
+    
+    // Recibir datos del radio
+    int state = radio.readData((uint8_t*)packet, sizeof(LoRaPacket));
+    
+    if (state == RADIOLIB_ERR_NONE) {
+        // Obtener estadísticas de señal
+        stats.lastRSSI = radio.getRSSI();
+        stats.lastSNR = radio.getSNR();
+        
+        // Validar packet básico
+        if (!validatePacket(packet)) {
+            stats.packetsLost++;
+            Serial.println("[LoRa] Packet inválido (checksum)");
+            return false;
+        }
+        
+        // Verificar duplicados
+        if (shouldFilterReceived(packet)) {
+            stats.duplicatesIgnored++;
+            Serial.println("[LoRa] Packet duplicado ignorado (sourceID=" + String(packet->sourceID) + ", packetID=" + String(packet->packetID) + ")");
+            return false;  // Packet duplicado, ignorar
+        }
+        
+        // Packet válido y nuevo
+        stats.packetsReceived++;
+        Serial.println("[LoRa] Packet válido recibido");
+        Serial.println("[LoRa] RSSI: " + String(stats.lastRSSI) + " dBm");
+        Serial.println("[LoRa] SNR: " + String(stats.lastSNR) + " dB");
+        Serial.println("[LoRa] Source: " + String(packet->sourceID) + ", Hops: " + String(packet->hops) + "/" + String(packet->maxHops));
+        
+        // Agregar a seen packets para evitar futuras retransmisiones
+        addToRecentPackets(packet->sourceID, packet->packetID);
+        
+        // Verificar si debe retransmitirse
+        if (perhapsRebroadcast(packet)) {
+            stats.rebroadcasts++;
+            Serial.println("[LoRa] Packet programado para retransmisión");
+        }
+        
+        // Procesar contenido según tipo de mensaje
+        switch (packet->messageType) {
+            case MSG_GPS_DATA:
+                // Procesar datos GPS recibidos
+                float lat, lon;
+                uint32_t timestamp;
+                uint16_t sourceID;
+                if (processGPSPacket(packet, &lat, &lon, &timestamp, &sourceID)) {
+                    Serial.println("[LoRa] GPS recibido de device " + String(sourceID) + 
+                                 ": " + String(lat, 6) + "," + String(lon, 6));
+                }
+                break;
+                
+            case MSG_HEARTBEAT:
+                Serial.println("[LoRa] Heartbeat recibido de device " + String(packet->sourceID));
+                break;
+                
+            default:
+                Serial.println("[LoRa] Packet tipo desconocido: " + String(packet->messageType));
+                break;
+        }
+        
+        return true;
+        
+    } else {
+        Serial.println("[LoRa] ERROR: Fallo en recepción");
+        Serial.println("[LoRa] Error code: " + String(state));
+        return false;
+    }
+}
+
+/*
+ * VERIFICAR SI HAY PACKETS DISPONIBLES
+ */
+bool LoRaManager::isPacketAvailable() {
+    // Verificar flag de recepción de RadioLib
+    return radio.getIrqStatus() & RADIOLIB_SX126X_IRQ_RX_DONE;
+}
+
+/*
+ * PROCESAR PACKET GPS RECIBIDO
+ */
+bool LoRaManager::processGPSPacket(const LoRaPacket* packet, float* lat, float* lon, uint32_t* timestamp, uint16_t* sourceID) {
+    if (!packet || packet->messageType != MSG_GPS_DATA) return false;
+    
+    // Extraer payload GPS
+    GPSPayload* gpsPayload = (GPSPayload*)packet->payload;
+    
+    // Convertir datos
+    payloadToGpsData(gpsPayload, lat, lon, timestamp);
+    *sourceID = packet->sourceID;
+    
+    return true;
+}
+
+/*
+ * LOOP PRINCIPAL DE ACTUALIZACIÓN
+ */
+void LoRaManager::update() {
+    // Limpiar packets antiguos cada 30 segundos
+    static unsigned long lastCleanup = 0;
+    if (millis() - lastCleanup >= 30000) {
+        cleanOldPackets();
+        lastCleanup = millis();
+    }
+    
+    // Verificar si hay packets recibidos
+    if (isPacketAvailable()) {
+        LoRaPacket packet;
+        if (receivePacket(&packet)) {
+            // El procesamiento ya se hace en receivePacket()
+        }
+    }
+}

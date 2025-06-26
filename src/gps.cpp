@@ -15,9 +15,7 @@
  * CONSTANTES MATEMÁTICAS Y DE CONVERSIÓN
  */
 #define EARTH_RADIUS_KM 6371.0f      // Radio de la Tierra en kilómetros
-#define PI 3.14159265359f            // Valor de PI
-#define DEG_TO_RAD (PI/180.0f)       // Conversión grados a radianes
-#define RAD_TO_DEG (180.0f/PI)       // Conversión radianes a grados
+// PI, DEG_TO_RAD y RAD_TO_DEG ya están definidos en Arduino.h
 #define METERS_PER_DEGREE_LAT 111320.0f  // Metros por grado de latitud
 
 /*
