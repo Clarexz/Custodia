@@ -1,9 +1,8 @@
 /*
  * CONFIG.CPP - Implementación del Sistema de Configuración
  * 
- * Este archivo implementa toda la funcionalidad del sistema de configuración
- * para el Custom Meshtastic GPS Tracker. Maneja comandos seriales, validación
- * de parámetros, persistencia en EEPROM y control de estados del sistema.
+ * ACTUALIZADO: Agregado soporte para configuración de región LoRa
+ * Permite seleccionar frecuencia según regulaciones regionales
  */
 
 #include "config.h"
@@ -14,7 +13,7 @@
  */
 
 // Versión del firmware - se actualiza con cada release
-#define FIRMWARE_VERSION "2.1.0"
+#define FIRMWARE_VERSION "2.2.0"
 
 // Timeout en milisegundos para confirmaciones de usuario
 #define CONFIRMATION_TIMEOUT 10000
@@ -24,15 +23,11 @@
 
 /*
  * INSTANCIA GLOBAL
- * 
- * Se define aquí la instancia global del ConfigManager declarada en config.h
  */
 ConfigManager configManager;
 
 /*
  * CONSTRUCTOR
- * 
- * Inicializa el ConfigManager en estado de arranque
  */
 ConfigManager::ConfigManager() {
     currentState = STATE_BOOT;
@@ -40,11 +35,6 @@ ConfigManager::ConfigManager() {
 
 /*
  * MÉTODO PRINCIPAL DE INICIALIZACIÓN
- * 
- * Este método se ejecuta una vez al arrancar el dispositivo y:
- * 1. Inicializa el sistema de preferencias (EEPROM)
- * 2. Carga configuración existente
- * 3. Determina si entrar en modo configuración u operativo
  */
 void ConfigManager::begin() {
     // Inicializar sistema de preferencias con namespace "mesh-config"
@@ -98,7 +88,8 @@ void ConfigManager::loadConfig() {
     config.deviceID = preferences.getUShort("deviceID", 0);
     config.gpsInterval = preferences.getUShort("gpsInterval", 30);
     config.maxHops = preferences.getUChar("maxHops", 3);
-    config.dataMode = (DataDisplayMode)preferences.getUChar("dataMode", DATA_MODE_ADMIN); // Default ADMIN
+    config.dataMode = (DataDisplayMode)preferences.getUChar("dataMode", DATA_MODE_ADMIN);
+    config.region = (LoRaRegion)preferences.getUChar("region", REGION_US); // NUEVO: Default US
     config.configValid = preferences.getBool("configValid", false);
     
     // Establecer versión del firmware actual
@@ -120,7 +111,8 @@ void ConfigManager::saveConfig() {
     preferences.putUShort("deviceID", config.deviceID);
     preferences.putUShort("gpsInterval", config.gpsInterval);
     preferences.putUChar("maxHops", config.maxHops);
-    preferences.putUChar("dataMode", config.dataMode); // Guardar modo de datos
+    preferences.putUChar("dataMode", config.dataMode);
+    preferences.putUChar("region", config.region); // NUEVO: Guardar región
     preferences.putBool("configValid", config.configValid);
     
     Serial.println("[OK] Configuración guardada exitosamente.");
@@ -147,7 +139,7 @@ void ConfigManager::processSerialInput() {
     Serial.println(">" + input);
     
     /*
-     * PARSER DE COMANDOS - ACTUALIZADO CON CONFIG_DATA_MODE
+     * PARSER DE COMANDOS - ACTUALIZADO CON CONFIG_REGION
      */
     
     if (input.startsWith("CONFIG_ROLE ")) {
@@ -165,8 +157,10 @@ void ConfigManager::processSerialInput() {
     else if (input.startsWith("CONFIG_DATA_MODE ")) {
         handleConfigDataMode(input.substring(17));
     }
+    else if (input.startsWith("CONFIG_REGION ")) {
+        handleConfigRegion(input.substring(14)); // NUEVO: Comando de región
+    }
     else if (input.startsWith("MODE ")) {
-        // NUEVO: Comando para cambiar modo durante operación
         handleModeChange(input.substring(5));
     }
     else if (input == "CONFIG_SAVE") {
@@ -268,9 +262,6 @@ void ConfigManager::handleConfigMaxHops(String value) {
     }
 }
 
-/*
- * ACTUALIZADO: MANEJADOR PARA CONFIG_DATA_MODE
- */
 void ConfigManager::handleConfigDataMode(String value) {
     value.trim();
     
@@ -293,8 +284,49 @@ void ConfigManager::handleConfigDataMode(String value) {
 }
 
 /*
- * NUEVO: MANEJADOR PARA CAMBIO DE MODO DURANTE OPERACIÓN
+ * NUEVO: MANEJADOR PARA CONFIG_REGION
  */
+void ConfigManager::handleConfigRegion(String value) {
+    value.trim();
+    
+    if (value == "US") {
+        config.region = REGION_US;
+        Serial.println("[OK] Región configurada: US (Estados Unidos/México)");
+        Serial.println("[INFO] Frecuencia: " + String(FREQ_US_MHZ) + " MHz");
+    }
+    else if (value == "EU") {
+        config.region = REGION_EU;
+        Serial.println("[OK] Región configurada: EU (Europa)");
+        Serial.println("[INFO] Frecuencia: " + String(FREQ_EU_MHZ) + " MHz");
+    }
+    else if (value == "CH") {
+        config.region = REGION_CH;
+        Serial.println("[OK] Región configurada: CH (China)");
+        Serial.println("[INFO] Frecuencia: " + String(FREQ_CH_MHZ) + " MHz");
+    }
+    else if (value == "AS") {
+        config.region = REGION_AS;
+        Serial.println("[OK] Región configurada: AS (Asia)");
+        Serial.println("[INFO] Frecuencia: " + String(FREQ_AS_MHZ) + " MHz");
+    }
+    else if (value == "JP") {
+        config.region = REGION_JP;
+        Serial.println("[OK] Región configurada: JP (Japón)");
+        Serial.println("[INFO] Frecuencia: " + String(FREQ_JP_MHZ) + " MHz");
+    }
+    else {
+        Serial.println("[ERROR] Región inválida. Use: US, EU, CH, AS, o JP");
+        Serial.println("[INFO] US: 915 MHz (Estados Unidos/México)");
+        Serial.println("[INFO] EU: 868 MHz (Europa)");
+        Serial.println("[INFO] CH: 470 MHz (China)");
+        Serial.println("[INFO] AS: 433 MHz (Asia)");
+        Serial.println("[INFO] JP: 920 MHz (Japón)");
+        return;
+    }
+    
+    Serial.println("[WARNING] Reinicie el dispositivo después de CONFIG_SAVE para aplicar nueva frecuencia");
+}
+
 void ConfigManager::handleModeChange(String value) {
     value.trim();
     
@@ -380,6 +412,7 @@ void ConfigManager::handleHelp() {
     Serial.println("CONFIG_GPS_INTERVAL <5-3600>             - Intervalo GPS en segundos");
     Serial.println("CONFIG_MAX_HOPS <1-10>                   - Máximo saltos en mesh");
     Serial.println("CONFIG_DATA_MODE <SIMPLE|ADMIN>          - Modo de visualización de datos");
+    Serial.println("CONFIG_REGION <US|EU|CH|AS|JP>           - Región LoRa (frecuencia)");
     Serial.println("CONFIG_SAVE                              - Guardar configuración");
     Serial.println("CONFIG_RESET                             - Resetear configuración");
     Serial.println("INFO                                     - Información del dispositivo");
@@ -391,6 +424,13 @@ void ConfigManager::handleHelp() {
     Serial.println("MODE SIMPLE                              - Cambiar a vista simple");
     Serial.println("MODE ADMIN                               - Cambiar a vista completa");
     Serial.println("");
+    Serial.println("=== REGIONES LORA ===");
+    Serial.println("US: 915 MHz (Estados Unidos/México)");
+    Serial.println("EU: 868 MHz (Europa)");
+    Serial.println("CH: 470 MHz (China)");
+    Serial.println("AS: 433 MHz (Asia)");
+    Serial.println("JP: 920 MHz (Japón)");
+    Serial.println("");
     Serial.println("=== MODOS DE DATOS ===");
     Serial.println("SIMPLE: Solo packet [deviceID, lat, lon, battery, timestamp]");
     Serial.println("ADMIN:  Información completa de mesh y estadísticas");
@@ -398,12 +438,31 @@ void ConfigManager::handleHelp() {
 }
 
 /*
- * NUEVOS MÉTODOS PARA GESTIÓN DE MODO
+ * MÉTODOS PARA GESTIÓN DE REGIÓN
  */
+
+float ConfigManager::getFrequencyMHz() {
+    switch (config.region) {
+        case REGION_US: return FREQ_US_MHZ;
+        case REGION_EU: return FREQ_EU_MHZ;
+        case REGION_CH: return FREQ_CH_MHZ;
+        case REGION_AS: return FREQ_AS_MHZ;
+        case REGION_JP: return FREQ_JP_MHZ;
+        default: return FREQ_US_MHZ; // Default US
+    }
+}
 
 void ConfigManager::setDataMode(DataDisplayMode mode) {
     config.dataMode = mode;
     preferences.putUChar("dataMode", config.dataMode);
+}
+
+void ConfigManager::setGpsInterval(uint16_t interval) {
+    if (interval >= 5 && interval <= 3600) {
+        config.gpsInterval = interval;
+        // Para prototipo no guardamos automáticamente en EEPROM
+        // preferences.putUShort("gpsInterval", config.gpsInterval);
+    }
 }
 
 String ConfigManager::getCurrentDataModeString() {
@@ -421,6 +480,7 @@ void ConfigManager::printConfig() {
     Serial.println("Intervalo GPS: " + String(config.gpsInterval) + " segundos");
     Serial.println("Máximo saltos: " + String(config.maxHops));
     Serial.println("Modo de datos: " + getDataModeString(config.dataMode));
+    Serial.println("Región LoRa: " + getRegionString(config.region) + " (" + String(getFrequencyMHz()) + " MHz)");
     Serial.println("============================");
 }
 
@@ -428,6 +488,7 @@ void ConfigManager::printWelcome() {
     Serial.println("\n==================================================");
     Serial.println("    CUSTOM MESHTASTIC GPS TRACKER v" + String(config.version));
     Serial.println("    Basado en ESP32-S3 + LoRa SX1262");
+    Serial.println("    Soporte multi-región: US/EU/CH/AS/JP");
     Serial.println("==================================================");
 }
 
@@ -440,7 +501,8 @@ void ConfigManager::setDefaultConfig() {
     config.deviceID = 0;
     config.gpsInterval = 30;
     config.maxHops = 3;
-    config.dataMode = DATA_MODE_ADMIN;  // Default ADMIN
+    config.dataMode = DATA_MODE_ADMIN;
+    config.region = REGION_US; // NUEVO: Default US region
     config.configValid = false;
     strncpy(config.version, FIRMWARE_VERSION, sizeof(config.version) - 1);
     config.version[sizeof(config.version) - 1] = '\0';
@@ -469,6 +531,17 @@ String ConfigManager::getDataModeString(DataDisplayMode mode) {
     switch (mode) {
         case DATA_MODE_SIMPLE: return "SIMPLE";
         case DATA_MODE_ADMIN: return "ADMIN";
+        default: return "DESCONOCIDO";
+    }
+}
+
+String ConfigManager::getRegionString(LoRaRegion region) {
+    switch (region) {
+        case REGION_US: return "US";
+        case REGION_EU: return "EU";
+        case REGION_CH: return "CH";
+        case REGION_AS: return "AS";
+        case REGION_JP: return "JP";
         default: return "DESCONOCIDO";
     }
 }

@@ -1,15 +1,8 @@
 /*
  * CONFIG.H - Sistema de Configuración para Custom Meshtastic GPS Tracker
  * 
- * Este archivo define la estructura del sistema de configuración que permite
- * configurar dispositivos ESP32-S3 para diferentes roles en una red mesh LoRa.
- * 
- * Características principales:
- * - Configuración via comandos seriales
- * - Persistencia en EEPROM usando Preferences
- * - Validación automática de parámetros
- * - Sistema de estados para control de flujo
- * - ACTUALIZADO: Modo de visualización de datos (SIMPLE/ADMIN) con comandos en tiempo real
+ * ACTUALIZADO: Agregado soporte para configuración de región LoRa
+ * Soporta diferentes frecuencias según regulaciones regionales
  */
 
 #ifndef CONFIG_H
@@ -44,6 +37,15 @@ enum DataDisplayMode {
     DATA_MODE_ADMIN = 1     // Vista admin: información completa
 };
 
+// NUEVO: Regiones LoRa con frecuencias específicas
+enum LoRaRegion {
+    REGION_US = 0,      // Estados Unidos/México: 915 MHz
+    REGION_EU = 1,      // Europa: 868 MHz
+    REGION_CH = 2,      // China: 470 MHz
+    REGION_AS = 3,      // Asia: 433 MHz
+    REGION_JP = 4       // Japón: 920 MHz
+};
+
 /*
  * ESTRUCTURAS DE DATOS
  */
@@ -55,6 +57,7 @@ struct DeviceConfig {
     uint16_t gpsInterval;    // Segundos entre transmisiones GPS (5-3600)
     uint8_t maxHops;         // Máximo número de saltos en mesh (1-10)
     DataDisplayMode dataMode; // Modo de visualización de datos
+    LoRaRegion region;       // NUEVO: Región LoRa para frecuencia
     bool configValid;        // Flag que indica si la configuración es válida
     char version[8];         // Versión del firmware para compatibilidad
 };
@@ -62,9 +65,7 @@ struct DeviceConfig {
 /*
  * CLASE PRINCIPAL - ConfigManager
  * 
- * Esta clase maneja todo el sistema de configuración del dispositivo.
- * Proporciona una interfaz de comandos seriales para configurar el rol,
- * parámetros de red y comportamiento del dispositivo.
+ * ACTUALIZADA: Ahora incluye gestión de regiones LoRa
  */
 class ConfigManager {
 private:
@@ -95,6 +96,9 @@ private:
     
     // Convierte enum DataDisplayMode a string legible
     String getDataModeString(DataDisplayMode mode);
+    
+    // NUEVO: Convierte enum LoRaRegion a string legible
+    String getRegionString(LoRaRegion region);
     
 public:
     /*
@@ -137,10 +141,13 @@ public:
     // CONFIG_MAX_HOPS: Establece máximo de saltos en mesh
     void handleConfigMaxHops(String value);
     
-    // CONFIG_DATA_MODE: Configura modo de visualización de datos (ACTUALIZADO)
+    // CONFIG_DATA_MODE: Configura modo de visualización de datos
     void handleConfigDataMode(String value);
     
-    // NUEVO: MODE: Cambia modo durante operación
+    // NUEVO: CONFIG_REGION: Configura región LoRa
+    void handleConfigRegion(String value);
+    
+    // MODE: Cambia modo durante operación
     void handleModeChange(String value);
     
     // CONFIG_SAVE: Guarda configuración en EEPROM
@@ -183,10 +190,19 @@ public:
     // Verifica si está en modo admin
     bool isAdminMode() { return config.dataMode == DATA_MODE_ADMIN; }
     
-    // NUEVO: Cambiar modo directamente (para comandos en tiempo real)
+    // NUEVO: Obtiene región LoRa actual
+    LoRaRegion getRegion() { return config.region; }
+    
+    // NUEVO: Obtiene frecuencia según la región configurada
+    float getFrequencyMHz();
+    
+    // NUEVO: Cambiar GPS interval remotamente (para comandos remotos)
+    void setGpsInterval(uint16_t interval);
+    
+    // Cambiar modo directamente (para comandos en tiempo real)
     void setDataMode(DataDisplayMode mode);
     
-    // NUEVO: Obtener string del modo actual para confirmación
+    // Obtener string del modo actual para confirmación
     String getCurrentDataModeString();
     
     /*
@@ -199,6 +215,15 @@ public:
     // Muestra mensaje de bienvenida al iniciar
     void printWelcome();
 };
+
+/*
+ * CONSTANTES DE FRECUENCIAS POR REGIÓN
+ */
+#define FREQ_US_MHZ     915.0f  // Estados Unidos/México
+#define FREQ_EU_MHZ     868.0f  // Europa
+#define FREQ_CH_MHZ     470.0f  // China
+#define FREQ_AS_MHZ     433.0f  // Asia
+#define FREQ_JP_MHZ     920.0f  // Japón
 
 /*
  * INSTANCIA GLOBAL

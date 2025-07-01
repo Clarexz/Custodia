@@ -1,15 +1,7 @@
 /*
  * LORA.H - Sistema LoRa Enhanced con Algoritmo Meshtastic
  * 
- * Este archivo define la interfaz del sistema LoRa que maneja la comunicación
- * inalámbrica usando el módulo SX1262 con RadioLib, ahora con algoritmo
- * de Managed Flood Routing basado exactamente en el código de Meshtastic.
- * 
- * ENHANCED FEATURES:
- * - Duplicate packet detection (wasSeenRecently)
- * - SNR-based intelligent delays
- * - Role-based priority (REPEATER advantage)
- * - Managed flood routing algorithm
+ * ACTUALIZADO: Agregado soporte para configuración remota y discovery
  */
 
 #ifndef LORA_H
@@ -22,9 +14,6 @@
 
 /*
  * CONFIGURACIÓN DE HARDWARE PARA XIAO ESP32S3 + WIO SX1262
- * 
- * Pines oficiales según Meshtastic firmware:
- * Fuente: https://github.com/meshtastic/firmware/blob/v2.5.20.4c97351/variants/seeed_xiao_s3/variant.h
  */
 
 // Configuración oficial de Meshtastic para XIAO S3 + SX1262
@@ -40,9 +29,6 @@
  * CONFIGURACIÓN DE RADIO
  */
 
-// Frecuencia para región de México (915 MHz ISM band)
-#define LORA_FREQUENCY      915.0f  // MHz
-
 // Configuración optimizada para velocidad vs alcance
 #define LORA_BANDWIDTH      125.0f  // kHz - Balance velocidad/alcance
 #define LORA_SPREADING_FACTOR   7   // SF7 = Rápido, SF12 = Largo alcance
@@ -52,16 +38,19 @@
 #define LORA_SYNC_WORD     0x12     // Palabra de sincronización personalizada
 
 /*
- * PROTOCOLO DE PACKETS
+ * PROTOCOLO DE PACKETS - ACTUALIZADO
  */
 
 // Tipos de mensaje en la red mesh
 enum LoRaMessageType {
-    MSG_GPS_DATA = 0x01,        // Datos GPS de TRACKER
-    MSG_MESH_ROUTE = 0x02,      // Mensaje de routing mesh
-    MSG_CONFIG_CMD = 0x03,      // Comando de configuración remota
-    MSG_HEARTBEAT = 0x04,       // Heartbeat para mantener conectividad
-    MSG_ACK = 0x05              // Acknowledgment
+    MSG_GPS_DATA = 0x01,            // Datos GPS de TRACKER
+    MSG_MESH_ROUTE = 0x02,          // Mensaje de routing mesh
+    MSG_CONFIG_CMD = 0x03,          // NUEVO: Comando de configuración remota
+    MSG_CONFIG_RESPONSE = 0x04,     // NUEVO: Respuesta a comando remoto
+    MSG_DISCOVERY_REQUEST = 0x05,   // NUEVO: Solicitud de discovery
+    MSG_DISCOVERY_RESPONSE = 0x06,  // NUEVO: Respuesta de discovery
+    MSG_HEARTBEAT = 0x07,           // Heartbeat para mantener conectividad
+    MSG_ACK = 0x08                  // Acknowledgment
 };
 
 // Estructura del packet LoRa optimizada
@@ -82,13 +71,53 @@ struct GPSPayload {
     float latitude;             // 4 bytes
     float longitude;            // 4 bytes  
     uint32_t timestamp;         // 4 bytes
-    uint16_t batteryVoltage;    // 2 bytes (mV) - Futuro
+    uint16_t batteryVoltage;    // 2 bytes (mV)
     uint8_t satellites;         // 1 byte - Info adicional
     uint8_t reserved;           // 1 byte - Para alineación
 } __attribute__((packed));     // Total: 16 bytes
 
 /*
- * MESHTASTIC ALGORITHM COMPONENTS
+ * NUEVAS ESTRUCTURAS PARA CONFIGURACIÓN REMOTA
+ */
+
+// Tipos de comandos remotos
+enum RemoteCommandType {
+    REMOTE_CMD_GPS_INTERVAL = 0x01,     // Cambiar intervalo GPS
+    REMOTE_CMD_DATA_MODE = 0x02,        // Cambiar modo de datos
+    REMOTE_CMD_STATUS = 0x03,           // Solicitar status
+    REMOTE_CMD_REBOOT = 0x04            // Reiniciar dispositivo
+};
+
+// Comando de configuración remota (payload)
+struct RemoteConfigCmd {
+    uint8_t commandType;        // Tipo de comando (RemoteCommandType)
+    uint32_t value;             // Valor del comando
+    uint32_t sequenceID;        // ID de secuencia para tracking
+    uint8_t reserved[3];        // Padding para alineación
+} __attribute__((packed));     // Total: 12 bytes
+
+// Respuesta a comando remoto (payload)
+struct RemoteConfigResponse {
+    uint8_t commandType;        // Comando al que responde
+    uint8_t success;            // 1 = éxito, 0 = error
+    uint32_t sequenceID;        // ID de secuencia original
+    uint32_t currentValue;      // Valor actual después del cambio
+    char message[16];           // Mensaje de respuesta
+} __attribute__((packed));     // Total: 26 bytes
+
+// Información de discovery (payload)
+struct DiscoveryInfo {
+    uint8_t role;               // DeviceRole
+    uint16_t gpsInterval;       // Intervalo GPS actual
+    uint8_t dataMode;           // DataDisplayMode actual
+    uint8_t region;             // LoRaRegion actual
+    uint16_t batteryVoltage;    // Voltaje de batería
+    uint32_t uptime;            // Tiempo encendido en segundos
+    uint8_t reserved[4];        // Padding
+} __attribute__((packed));     // Total: 16 bytes
+
+/*
+ * MESHTASTIC ALGORITHM COMPONENTS (sin cambios)
  */
 
 // Duplicate packet detection - Basado exactamente en Meshtastic
@@ -110,7 +139,7 @@ struct ContentionWindow {
 };
 
 /*
- * ESTADOS Y ESTADÍSTICAS DEL SISTEMA LORA (EXISTENTES)
+ * ESTADOS Y ESTADÍSTICAS DEL SISTEMA LORA (sin cambios)
  */
 
 enum LoRaStatus {
@@ -129,7 +158,7 @@ struct LoRaStats {
     float lastSNR;              // Último SNR recibido (dB)
     uint32_t totalAirTime;      // Tiempo total en el aire (ms)
     
-    // NUEVAS estadísticas mesh
+    // Estadísticas mesh
     uint32_t duplicatesIgnored; // Packets duplicados ignorados
     uint32_t rebroadcasts;      // Packets retransmitidos
     uint32_t hopLimitReached;   // Packets descartados por hop limit
@@ -137,14 +166,10 @@ struct LoRaStats {
 
 /*
  * CLASE PRINCIPAL - LoRaManager ENHANCED
- * 
- * Maneja toda la funcionalidad LoRa incluyendo transmisión,
- * recepción, protocolo de packets, estadísticas Y el algoritmo
- * de Managed Flood Routing de Meshtastic.
  */
 class LoRaManager {
 private:
-    // === COMPONENTES EXISTENTES (NO MODIFICADOS) ===
+    // === COMPONENTES EXISTENTES ===
     
     // Instancia del módulo SX1262 usando RadioLib
     SX1262 radio;
@@ -152,10 +177,10 @@ private:
     // Estado actual del sistema LoRa
     LoRaStatus status;
     
-    // Estadísticas de comunicación (ahora enhanced)
+    // Estadísticas de comunicación
     LoRaStats stats;
     
-    // ID de este dispositivo (obtenido de ConfigManager)
+    // ID de este dispositivo
     uint16_t deviceID;
     
     // Contador para generar IDs únicos de packets
@@ -164,11 +189,11 @@ private:
     // Buffer para recepción
     uint8_t receiveBuffer[256];
     
-    // === NUEVOS COMPONENTES MESHTASTIC ===
+    // === COMPONENTES MESHTASTIC ===
     
-    // Duplicate Detection System - Basado en FloodingRouter.cpp
+    // Duplicate Detection System
     std::vector<PacketRecord> recentBroadcasts;
-    static const uint16_t MAX_RECENT_PACKETS = 100;     // Conservador
+    static const uint16_t MAX_RECENT_PACKETS = 100;
     static const unsigned long PACKET_MEMORY_TIME = 300000; // 5 minutos
     
     // Role Management para priority
@@ -178,7 +203,7 @@ private:
     ContentionWindow cw;
     
     /*
-     * MÉTODOS PRIVADOS EXISTENTES (NO MODIFICADOS)
+     * MÉTODOS PRIVADOS EXISTENTES
      */
     
     // Inicialización del hardware SX1262
@@ -200,52 +225,55 @@ private:
     void payloadToGpsData(const GPSPayload* payload, float* lat, float* lon, uint32_t* timestamp);
     
     /*
-     * NUEVOS MÉTODOS PRIVADOS - MESHTASTIC ALGORITHM
+     * MÉTODOS PRIVADOS - MESHTASTIC ALGORITHM
      */
     
-    // Duplicate Detection - Copiado exacto de FloodingRouter.cpp
+    // Duplicate Detection
     bool wasSeenRecently(const LoRaPacket* packet);
     void addToRecentPackets(uint16_t sourceID, uint32_t packetID);
     void cleanOldPackets();
     
-    // SNR-based Delays - Copiado exacto de RadioInterface.cpp
+    // SNR-based Delays
     uint8_t getCWsize(float snr);
     uint32_t getTxDelayMsecWeighted(float snr, DeviceRole role);
     uint32_t getRandomDelay(uint8_t cwSize);
     
-    // Mesh Logic - Basado en FloodingRouter.cpp
+    // Mesh Logic
     bool shouldFilterReceived(const LoRaPacket* packet);
     bool isRebroadcaster();
     bool isToUs(const LoRaPacket* packet);
     bool isFromUs(const LoRaPacket* packet);
     bool isBroadcast(uint16_t destinationID);
     
-    // Role Priority - Exact from Meshtastic
+    // Role Priority
     bool hasRolePriority(DeviceRole role);
     
 public:
     /*
-     * CONSTRUCTOR Y DESTRUCTOR (NO MODIFICADOS)
+     * CONSTRUCTOR Y DESTRUCTOR
      */
     LoRaManager();
     ~LoRaManager();
     
     /*
-     * MÉTODOS PÚBLICOS PRINCIPALES (EXISTENTES - ALGUNOS ENHANCED)
+     * MÉTODOS PÚBLICOS PRINCIPALES
      */
     
-    // Inicialización del sistema LoRa (NO MODIFICADO)
+    // Inicialización del sistema LoRa
     bool begin();
     bool begin(uint16_t deviceID);
     
-    // Control del módulo (ENHANCED)
-    void update();                  // Ahora incluye cleanOldPackets()
-    void sleep();                   // NO MODIFICADO
-    void wakeup();                  // NO MODIFICADO
-    void reset();                   // NO MODIFICADO
+    // Control del módulo
+    void update();
+    void sleep();
+    void wakeup();
+    void reset();
+    
+    // Actualizar frecuencia desde configuración
+    bool updateFrequencyFromConfig();
     
     /*
-     * TRANSMISIÓN DE DATOS (NO MODIFICADOS)
+     * TRANSMISIÓN DE DATOS (existentes)
      */
     
     // Enviar datos GPS (para TRACKER)
@@ -257,20 +285,38 @@ public:
     bool sendPacket(LoRaMessageType msgType, const uint8_t* payload, uint8_t payloadLength, uint16_t destinationID);
     
     /*
-     * RECEPCIÓN DE DATOS (ENHANCED)
+     * NUEVOS MÉTODOS PARA CONFIGURACIÓN REMOTA
      */
     
-    // Verificar si hay packets disponibles (NO MODIFICADO)
+    // Discovery de dispositivos
+    bool sendDiscoveryRequest();
+    bool sendDiscoveryResponse(uint16_t requestorID);
+    
+    // Comandos remotos
+    bool sendRemoteConfigCommand(uint16_t targetID, RemoteCommandType cmdType, uint32_t value, uint32_t sequenceID);
+    bool sendRemoteConfigResponse(uint16_t targetID, RemoteCommandType cmdType, bool success, uint32_t sequenceID, uint32_t currentValue, const char* message);
+    
+    // Procesamiento de comandos remotos
+    bool processRemoteConfigCommand(const LoRaPacket* packet);
+    bool processRemoteConfigResponse(const LoRaPacket* packet);
+    bool processDiscoveryRequest(const LoRaPacket* packet);
+    bool processDiscoveryResponse(const LoRaPacket* packet);
+    
+    /*
+     * RECEPCIÓN DE DATOS (existentes)
+     */
+    
+    // Verificar si hay packets disponibles
     bool isPacketAvailable();
     
-    // Recibir y procesar packet (ENHANCED con mesh logic)
+    // Recibir y procesar packet
     bool receivePacket(LoRaPacket* packet);
     
-    // Procesar packet GPS recibido (NO MODIFICADO)
+    // Procesar packet GPS recibido
     bool processGPSPacket(const LoRaPacket* packet, float* lat, float* lon, uint32_t* timestamp, uint16_t* sourceID);
     
     /*
-     * MESH ROUTING (NUEVOS MÉTODOS PÚBLICOS)
+     * MESH ROUTING (existentes)
      */
     
     // Enhanced rebroadcast con algoritmo Meshtastic
@@ -286,7 +332,7 @@ public:
     uint32_t getHopLimitReached() { return stats.hopLimitReached; }
     
     /*
-     * CONFIGURACIÓN Y ESTADO (NO MODIFICADOS)
+     * CONFIGURACIÓN Y ESTADO (existentes)
      */
     
     // Configurar parámetros de radio
@@ -307,48 +353,50 @@ public:
     uint16_t getDeviceID() { return deviceID; }
     
     /*
-     * MÉTODOS DE DIAGNÓSTICO (ENHANCED)
+     * MÉTODOS DE DIAGNÓSTICO (existentes)
      */
     
-    // Test de comunicación básica (NO MODIFICADO)
+    // Test de comunicación básica
     bool selfTest();
     
-    // Información de debug (ENHANCED con mesh stats)
+    // Información de debug
     void printConfiguration();
     void printStats();
-    void printMeshStats();              // NUEVO
+    void printMeshStats();
     void printPacketInfo(const LoRaPacket* packet);
     
-    // Reset de estadísticas (ENHANCED)
+    // Reset de estadísticas
     void resetStats();
 };
 
 /*
- * INSTANCIA GLOBAL (NO MODIFICADA)
- * 
- * Se declara aquí y se define en lora.cpp para uso en todo el proyecto
+ * INSTANCIA GLOBAL
  */
 extern LoRaManager loraManager;
 
 /*
- * UTILIDADES Y CONSTANTES (EXISTING + NEW)
+ * UTILIDADES Y CONSTANTES
  */
 
-// Constantes de timeout (NO MODIFICADAS)
+// Constantes de timeout
 #define LORA_TX_TIMEOUT         5000    // ms - Timeout para transmisión
 #define LORA_RX_TIMEOUT         1000    // ms - Timeout para recepción
 #define LORA_INIT_TIMEOUT       10000   // ms - Timeout para inicialización
 
-// Direcciones especiales (NO MODIFICADAS)
+// Direcciones especiales
 #define LORA_BROADCAST_ADDR     0xFFFF  // Dirección de broadcast
 #define LORA_INVALID_ADDR       0x0000  // Dirección inválida
 
-// Tamaños máximos (NO MODIFICADOS)
+// Tamaños máximos
 #define LORA_MAX_PAYLOAD_SIZE   32      // bytes - Máximo payload por packet
 #define LORA_MAX_PACKET_SIZE    64      // bytes - Máximo tamaño total de packet
 
-// NUEVAS CONSTANTES MESHTASTIC
+// Constantes Meshtastic
 #define MESHTASTIC_MAX_HOPS     3       // Máximo saltos por defecto
 #define MESHTASTIC_PACKET_ID_INVALID 0  // ID inválido
+
+// NUEVAS CONSTANTES para configuración remota
+#define REMOTE_CONFIG_TIMEOUT   5000    // ms - Timeout para respuesta remota
+#define DISCOVERY_TIMEOUT       3000    // ms - Timeout para discovery
 
 #endif

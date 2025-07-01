@@ -7,7 +7,18 @@
 // Pin del LED para indicadores visuales
 #define LED_PIN 21
 
-// Declaraciones de funciones
+// NUEVO: Estados para el RECEIVER
+enum ReceiverState {
+    RECEIVER_NORMAL = 0,        // Modo normal escuchando
+    RECEIVER_REMOTE_CONFIG = 1  // Configurando dispositivo remoto
+};
+
+// Variables globales para configuración remota
+ReceiverState receiverState = RECEIVER_NORMAL;
+uint16_t targetDeviceID = 0;
+uint32_t commandSequence = 1;
+
+// Declaraciones de funciones existentes
 void handleOperativeMode();
 void handleTrackerMode();
 void handleRepeaterMode();
@@ -22,6 +33,13 @@ void printSimpleRepeaterOutput(const String& packet);
 void printAdminRepeaterOutput();
 void printSimpleReceiverOutput(const String& packet);
 void printAdminReceiverOutput();
+
+// NUEVAS: Funciones para configuración remota
+void handleReceiverSerialInput();
+void handleDiscoverCommand();
+void handleRemoteConfigMode(String input);
+void sendRemoteConfigCommand(uint8_t cmdType, uint32_t value);
+void processIncomingMessages();
 
 // Flag para controlar inicialización tardía de LoRa
 bool loraInitialized = false;
@@ -47,66 +65,49 @@ void setup() {
 }
 
 void loop() {
-  // CORREGIDO: Procesar comandos especiales durante operación
-  if (Serial.available() && configManager.getState() == STATE_RUNNING) {
-    String input = Serial.readStringUntil('\n');
-    input.trim();
-    input.toUpperCase();
-    
-    if (input.length() > 0) {
-      // Echo del comando
-      Serial.println(">" + input);
+  // Procesar comandos seriales según el rol y estado
+  if (Serial.available()) {
+    if (configManager.getState() == STATE_RUNNING && 
+        configManager.getConfig().role == ROLE_RECEIVER) {
+      // RECEIVER tiene manejo especial de comandos
+      handleReceiverSerialInput();
+    } else if (configManager.getState() == STATE_RUNNING) {
+      // Otros roles - comandos limitados durante operación
+      String input = Serial.readStringUntil('\n');
+      input.trim();
+      input.toUpperCase();
       
-      // Comando MODE durante operación
-      if (input.startsWith("MODE ")) {
-        configManager.handleModeChange(input.substring(5));
-        return;
+      if (input.length() > 0) {
+        Serial.println(">" + input);
+        
+        if (input.startsWith("MODE ")) {
+          configManager.handleModeChange(input.substring(5));
+        } else if (input == "CONFIG_RESET") {
+          configManager.handleConfigReset();
+        } else if (input == "CONFIG") {
+          configManager.setState(STATE_CONFIG_MODE);
+          loraInitialized = false;
+          Serial.println("[INFO] Entrando en modo configuración.");
+        } else if (input == "STATUS") {
+          configManager.handleStatus();
+        } else if (input == "INFO") {
+          configManager.handleInfo();
+        } else if (input == "HELP") {
+          Serial.println("\n=== COMANDOS DURANTE OPERACIÓN ===");
+          Serial.println("MODE SIMPLE/ADMIN    - Cambiar modo visualización");
+          Serial.println("CONFIG_RESET         - Resetear configuración");
+          Serial.println("CONFIG               - Modo configuración");
+          Serial.println("STATUS/INFO/HELP     - Información");
+          Serial.println("============================");
+        } else {
+          Serial.println("[INFO] Comandos limitados en operación. Use HELP para ver disponibles.");
+        }
       }
-      // NUEVO: Permitir CONFIG_RESET durante operación
-      else if (input == "CONFIG_RESET") {
-        configManager.handleConfigReset();
-        return;
-      }
-      // NUEVO: Permitir volver a CONFIG_MODE
-      else if (input == "CONFIG") {
-        configManager.setState(STATE_CONFIG_MODE);
-        loraInitialized = false;
-        Serial.println("[INFO] Entrando en modo configuración.");
-        return;
-      }
-      // NUEVO: Permitir STATUS durante operación
-      else if (input == "STATUS") {
-        configManager.handleStatus();
-        return;
-      }
-      // NUEVO: Permitir INFO durante operación
-      else if (input == "INFO") {
-        configManager.handleInfo();
-        return;
-      }
-      // NUEVO: Permitir HELP durante operación
-      else if (input == "HELP") {
-        Serial.println("\n=== COMANDOS DURANTE OPERACIÓN ===");
-        Serial.println("MODE SIMPLE                              - Cambiar a vista simple");
-        Serial.println("MODE ADMIN                               - Cambiar a vista completa");
-        Serial.println("CONFIG_RESET                             - Resetear configuración");
-        Serial.println("CONFIG                                   - Volver a modo configuración");
-        Serial.println("STATUS                                   - Estado actual del sistema");
-        Serial.println("INFO                                     - Información del dispositivo");
-        Serial.println("HELP                                     - Mostrar esta ayuda");
-        Serial.println("============================");
-        return;
-      }
-      // Informar sobre comandos disponibles para otros comandos
-      else {
-        Serial.println("[INFO] Comandos disponibles: MODE SIMPLE, MODE ADMIN, CONFIG_RESET, CONFIG, STATUS, INFO, HELP");
-        return;
-      }
+    } else {
+      // Modo configuración normal
+      configManager.processSerialInput();
     }
   }
-  
-  // Procesar comandos seriales normalmente (CONFIG_MODE y otros)
-  configManager.processSerialInput();
   
   // Verificar si necesitamos inicializar LoRa después de configuración
   if (configManager.getState() == STATE_RUNNING && !loraInitialized) {
@@ -123,6 +124,10 @@ void loop() {
   if (configManager.getState() == STATE_RUNNING && loraInitialized) {
     gpsManager.update();
     loraManager.update();
+    
+    // Procesar mensajes entrantes (importante para configuración remota)
+    // TODOS los roles deben procesar mensajes entrantes
+    processIncomingMessages();
   }
   
   // Comportamiento según el estado actual
@@ -154,6 +159,240 @@ void loop() {
       break;
   }
 }
+
+/*
+ * NUEVA: Manejo de entrada serial para RECEIVER
+ */
+void handleReceiverSerialInput() {
+  String input = Serial.readStringUntil('\n');
+  input.trim();
+  input.toUpperCase();
+  
+  if (input.length() == 0) {
+    if (receiverState == RECEIVER_REMOTE_CONFIG) {
+      Serial.print("remote_" + String(targetDeviceID, DEC) + "> ");
+    }
+    return;
+  }
+  
+  // Echo del comando
+  Serial.println(">" + input);
+  
+  if (receiverState == RECEIVER_NORMAL) {
+    // Comandos en modo normal del RECEIVER
+    if (input == "DISCOVER") {
+      handleDiscoverCommand();
+    }
+    else if (input.startsWith("REMOTE_CONFIG ")) {
+      String deviceIDStr = input.substring(14);
+      deviceIDStr.trim();
+      
+      int devID = deviceIDStr.toInt();
+      if (devID >= 1 && devID <= 999) {
+        receiverState = RECEIVER_REMOTE_CONFIG;
+        targetDeviceID = devID;
+        Serial.println("[INFO] Configurando dispositivo " + String(devID) + "...");
+        Serial.println("[INFO] Comandos: REMOTE_GPS_INTERVAL, REMOTE_DATA_MODE, REMOTE_STATUS, REMOTE_REBOOT, EXIT");
+        Serial.print("remote_" + String(devID, DEC) + "> ");
+      } else {
+        Serial.println("[ERROR] Device ID inválido. Use un número entre 1 y 999.");
+      }
+    }
+    else if (input.startsWith("MODE ")) {
+      configManager.handleModeChange(input.substring(5));
+    }
+    else if (input == "STATUS") {
+      configManager.handleStatus();
+    }
+    else if (input == "INFO") {
+      configManager.handleInfo();
+    }
+    else if (input == "HELP") {
+      Serial.println("\n=== COMANDOS RECEIVER ===");
+      Serial.println("DISCOVER                     - Buscar dispositivos en red");
+      Serial.println("REMOTE_CONFIG <deviceID>     - Configurar dispositivo remoto");
+      Serial.println("MODE SIMPLE/ADMIN            - Cambiar modo visualización");
+      Serial.println("STATUS/INFO                  - Información del sistema");
+      Serial.println("============================");
+    }
+    else {
+      Serial.println("[ERROR] Comando no reconocido. Use HELP para ver comandos.");
+    }
+  }
+  else if (receiverState == RECEIVER_REMOTE_CONFIG) {
+    // Comandos en modo configuración remota
+    handleRemoteConfigMode(input);
+  }
+}
+
+/*
+ * NUEVA: Comando DISCOVER
+ */
+void handleDiscoverCommand() {
+  Serial.println("[INFO] Buscando dispositivos en la red...");
+  
+  if (loraManager.sendDiscoveryRequest()) {
+    Serial.println("[INFO] Discovery request enviado. Esperando respuestas...");
+    
+    // Esperar respuestas por 3 segundos
+    unsigned long startTime = millis();
+    int devicesFound = 0;
+    
+    while (millis() - startTime < DISCOVERY_TIMEOUT) {
+      processIncomingMessages();
+      delay(100);
+    }
+    
+    Serial.println("[INFO] Discovery completado.");
+  } else {
+    Serial.println("[ERROR] No se pudo enviar discovery request");
+  }
+}
+
+/*
+ * NUEVA: Manejo de comandos remotos
+ */
+void handleRemoteConfigMode(String input) {
+  if (input == "EXIT") {
+    receiverState = RECEIVER_NORMAL;
+    targetDeviceID = 0;
+    Serial.println("[INFO] Saliendo de configuración remota");
+    Serial.println("[RECEIVER] Volviendo a modo normal...");
+    return;
+  }
+  
+  if (input.startsWith("REMOTE_GPS_INTERVAL ")) {
+    String valueStr = input.substring(20);
+    int value = valueStr.toInt();
+    
+    if (value >= 5 && value <= 3600) {
+      sendRemoteConfigCommand(REMOTE_CMD_GPS_INTERVAL, value);
+    } else {
+      Serial.println("[ERROR] Intervalo inválido. Use 5-3600 segundos.");
+    }
+  }
+  else if (input.startsWith("REMOTE_DATA_MODE ")) {
+    String modeStr = input.substring(17);
+    modeStr.trim();
+    
+    if (modeStr == "SIMPLE") {
+      sendRemoteConfigCommand(REMOTE_CMD_DATA_MODE, 0);
+    } else if (modeStr == "ADMIN") {
+      sendRemoteConfigCommand(REMOTE_CMD_DATA_MODE, 1);
+    } else {
+      Serial.println("[ERROR] Modo inválido. Use SIMPLE o ADMIN.");
+    }
+  }
+  else if (input == "REMOTE_STATUS") {
+    sendRemoteConfigCommand(REMOTE_CMD_STATUS, 0);
+  }
+  else if (input == "REMOTE_REBOOT") {
+    Serial.print("[WARNING] ¿Reiniciar device " + String(targetDeviceID) + "? (Y/N): ");
+    
+    // Esperar confirmación
+    unsigned long startTime = millis();
+    while (millis() - startTime < 10000) {
+      if (Serial.available()) {
+        String confirm = Serial.readStringUntil('\n');
+        confirm.trim();
+        confirm.toUpperCase();
+        Serial.println(confirm);
+        
+        if (confirm == "Y" || confirm == "YES") {
+          sendRemoteConfigCommand(REMOTE_CMD_REBOOT, 0);
+          return;
+        } else {
+          Serial.println("[INFO] Reboot cancelado.");
+          Serial.print("remote_" + String(targetDeviceID, DEC) + "> ");
+          return;
+        }
+      }
+      delay(100);
+    }
+    Serial.println("\n[INFO] Timeout. Reboot cancelado.");
+  }
+  else if (input == "HELP") {
+    Serial.println("\n=== COMANDOS CONFIGURACIÓN REMOTA ===");
+    Serial.println("REMOTE_GPS_INTERVAL <5-3600>    - Cambiar intervalo GPS");
+    Serial.println("REMOTE_DATA_MODE <SIMPLE|ADMIN> - Cambiar modo datos");
+    Serial.println("REMOTE_STATUS                   - Obtener estado");
+    Serial.println("REMOTE_REBOOT                   - Reiniciar dispositivo");
+    Serial.println("EXIT                            - Salir configuración remota");
+    Serial.println("=====================================");
+  }
+  else {
+    Serial.println("[ERROR] Comando no reconocido. Use HELP para ver comandos.");
+  }
+  
+  // Mostrar prompt
+  Serial.print("remote_" + String(targetDeviceID, DEC) + "> ");
+}
+
+/*
+ * NUEVA: Enviar comando de configuración remota
+ */
+void sendRemoteConfigCommand(uint8_t cmdType, uint32_t value) {
+  Serial.println("[OK] Enviando comando a device " + String(targetDeviceID) + "...");
+  
+  if (loraManager.sendRemoteConfigCommand(targetDeviceID, (RemoteCommandType)cmdType, value, commandSequence++)) {
+    Serial.println("[INFO] Comando enviado. Esperando respuesta...");
+  } else {
+    Serial.println("[ERROR] Fallo al enviar comando");
+  }
+}
+
+/*
+ * NUEVA: Procesar mensajes entrantes
+ */
+void processIncomingMessages() {
+  if (loraManager.isPacketAvailable()) {
+    LoRaPacket packet;
+    if (loraManager.receivePacket(&packet)) {
+      
+      // DEBUG: Mostrar qué tipos de mensaje llegan
+      if (configManager.isAdminMode()) {
+        Serial.println("[DEBUG] Mensaje recibido tipo: " + String(packet.messageType));
+      }
+      
+      // Procesar según tipo de mensaje
+      switch (packet.messageType) {
+        case MSG_GPS_DATA:
+          // Procesar datos GPS (existente)
+          break;
+          
+        case MSG_DISCOVERY_REQUEST:
+          Serial.println("[DEBUG] Procesando discovery request");
+          loraManager.processDiscoveryRequest(&packet);
+          break;
+          
+        case MSG_DISCOVERY_RESPONSE:
+          Serial.println("[DEBUG] Procesando discovery response");
+          loraManager.processDiscoveryResponse(&packet);
+          break;
+          
+        case MSG_CONFIG_CMD:
+          Serial.println("[DEBUG] Procesando config command");
+          loraManager.processRemoteConfigCommand(&packet);
+          break;
+          
+        case MSG_CONFIG_RESPONSE:
+          Serial.println("[DEBUG] Procesando config response");
+          loraManager.processRemoteConfigResponse(&packet);
+          break;
+          
+        default:
+          if (configManager.isAdminMode()) {
+            Serial.println("[DEBUG] Tipo de mensaje desconocido: " + String(packet.messageType));
+          }
+          break;
+      }
+    }
+  }
+}
+
+/*
+ * FUNCIONES EXISTENTES (sin cambios importantes)
+ */
 
 void handleOperativeMode() {
   DeviceConfig config = configManager.getConfig();
@@ -336,7 +575,7 @@ void handleReceiverMode() {
   if (currentTime - lastStatusUpdate >= 5000) {
     lastStatusUpdate = currentTime;
     
-    if (configManager.isAdminMode()) {
+    if (configManager.isAdminMode() && receiverState == RECEIVER_NORMAL) {
       printAdminReceiverOutput();
     }
   }
@@ -345,7 +584,7 @@ void handleReceiverMode() {
 }
 
 /*
- * FUNCIONES PARA MODOS DE DISPLAY
+ * FUNCIONES PARA MODOS DE DISPLAY (sin cambios)
  */
 
 void printSimpleTrackerOutput(uint16_t deviceID, float lat, float lon, uint16_t battery, uint32_t timestamp, bool sent) {
@@ -459,7 +698,7 @@ void printAdminReceiverOutput() {
 }
 
 /*
- * FUNCIONES DE INICIALIZACIÓN
+ * FUNCIONES DE INICIALIZACIÓN (sin cambios)
  */
 
 void initializeLoRaForRole() {
@@ -488,7 +727,7 @@ void initializeLoRaForRole() {
       break;
       
     case ROLE_RECEIVER:
-      Serial.println("[MAIN] LoRa configurado para RECEIVER (CLIENT priority)");
+      Serial.println("[MAIN] LoRa configurado para RECEIVER (CLIENT priority + Remote Config)");
       break;
       
     default:
@@ -506,6 +745,9 @@ void initializeLoRaForRole() {
     Serial.println("Duplicate detection: ACTIVO");
     Serial.println("SNR-based delays: ACTIVO");
     Serial.println("Role priority: " + String(config.role == ROLE_REPEATER ? "ALTA" : "NORMAL"));
+    if (config.role == ROLE_RECEIVER) {
+      Serial.println("Remote config: ACTIVO");
+    }
     Serial.println("=============================");
   }
 }

@@ -1,8 +1,8 @@
 /*
  * LORA_HARDWARE.CPP - Inicialización y Configuración del Hardware SX1262
  * 
- * Este archivo contiene todas las funciones relacionadas con la
- * inicialización del hardware y configuración de parámetros del radio.
+ * ACTUALIZADO: Ahora usa la frecuencia configurada según la región
+ * en lugar de una frecuencia fija
  */
 
 #include "../lora.h"
@@ -95,10 +95,14 @@ bool LoRaManager::begin(uint16_t devID) {
     }
     
     status = LORA_STATUS_READY;
+    
+    // ACTUALIZADO: Mostrar información con frecuencia dinámica
+    float frequency = configManager.getFrequencyMHz();
     Serial.println("[LoRa] Sistema LoRa inicializado exitosamente");
     Serial.println("[LoRa] Device ID: " + String(deviceID));
     Serial.println("[LoRa] Role: " + String(currentRole));
-    Serial.println("[LoRa] Frecuencia: " + String(LORA_FREQUENCY) + " MHz");
+    Serial.println("[LoRa] Región: " + configManager.getConfig().region);
+    Serial.println("[LoRa] Frecuencia: " + String(frequency) + " MHz");
     Serial.println("[LoRa] Algoritmo Meshtastic: ACTIVADO");
     
     return true;
@@ -127,19 +131,24 @@ bool LoRaManager::initRadio() {
 }
 
 /*
- * CONFIGURACIÓN DE PARÁMETROS DE RADIO
+ * CONFIGURACIÓN DE PARÁMETROS DE RADIO - ACTUALIZADA
  */
 bool LoRaManager::configureRadio() {
     Serial.println("[LoRa] Configurando parámetros de radio...");
     
     int state;
     
-    // Configurar frecuencia
-    state = radio.setFrequency(LORA_FREQUENCY);
+    // ACTUALIZADO: Obtener frecuencia desde ConfigManager
+    float frequency = configManager.getFrequencyMHz();
+    
+    // Configurar frecuencia según región
+    state = radio.setFrequency(frequency);
     if (state != RADIOLIB_ERR_NONE) {
-        Serial.println("[LoRa] ERROR: Fallo configurando frecuencia");
+        Serial.println("[LoRa] ERROR: Fallo configurando frecuencia " + String(frequency) + " MHz");
+        Serial.println("[LoRa] Error code: " + String(state));
         return false;
     }
+    Serial.println("[LoRa] Frecuencia configurada: " + String(frequency) + " MHz");
     
     // Configurar potencia de transmisión
     state = radio.setOutputPower(LORA_TX_POWER);
@@ -212,6 +221,36 @@ void LoRaManager::setSpreadingFactor(uint8_t sf) {
     if (radio.setSpreadingFactor(sf) == RADIOLIB_ERR_NONE) {
         Serial.println("[LoRa] Spreading Factor cambiado a: SF" + String(sf));
     }
+}
+
+/*
+ * NUEVO: MÉTODO PARA ACTUALIZAR FRECUENCIA DESDE CONFIGURACIÓN
+ */
+bool LoRaManager::updateFrequencyFromConfig() {
+    float newFrequency = configManager.getFrequencyMHz();
+    
+    Serial.println("[LoRa] Actualizando frecuencia a " + String(newFrequency) + " MHz...");
+    
+    // Detener recepción
+    radio.standby();
+    
+    // Configurar nueva frecuencia
+    int state = radio.setFrequency(newFrequency);
+    if (state != RADIOLIB_ERR_NONE) {
+        Serial.println("[LoRa] ERROR: Fallo actualizando frecuencia");
+        Serial.println("[LoRa] Error code: " + String(state));
+        return false;
+    }
+    
+    // Reiniciar recepción
+    state = radio.startReceive();
+    if (state != RADIOLIB_ERR_NONE) {
+        Serial.println("[LoRa] ERROR: No se pudo reiniciar recepción");
+        return false;
+    }
+    
+    Serial.println("[LoRa] Frecuencia actualizada exitosamente");
+    return true;
 }
 
 /*

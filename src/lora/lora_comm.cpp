@@ -1,17 +1,14 @@
 /*
  * LORA_COMM.CPP - Transmisión y Recepción Básica
  * 
- * Este archivo contiene las funciones de comunicación básica:
- * envío y recepción de packets sin la lógica mesh.
- * 
- * ACTUALIZADO: Debug output solo en modo ADMIN
+ * ACTUALIZADO: Agregado manejo de mensajes de configuración remota y discovery
  */
 
 #include "../lora.h"
 #include "../config.h"
 
 /*
- * ENVÍO DE DATOS GPS
+ * ENVÍO DE DATOS GPS (sin cambios)
  */
 bool LoRaManager::sendGPSData(float latitude, float longitude, uint32_t timestamp) {
     return sendGPSData(latitude, longitude, timestamp, LORA_BROADCAST_ADDR);
@@ -27,7 +24,7 @@ bool LoRaManager::sendGPSData(float latitude, float longitude, uint32_t timestam
 }
 
 /*
- * ENVÍO DE PACKET GENÉRICO
+ * ENVÍO DE PACKET GENÉRICO (sin cambios)
  */
 bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, uint8_t payloadLength) {
     return sendPacket(msgType, payload, payloadLength, LORA_BROADCAST_ADDR);
@@ -110,7 +107,7 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
 }
 
 /*
- * RECEPCIÓN Y PROCESAMIENTO DE PACKETS - CORREGIDO PARA MODO SIMPLE
+ * RECEPCIÓN Y PROCESAMIENTO DE PACKETS - ACTUALIZADO
  */
 bool LoRaManager::receivePacket(LoRaPacket* packet) {
     if (!packet) return false;
@@ -152,21 +149,13 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
             Serial.println("[LoRa] RSSI: " + String(stats.lastRSSI) + " dBm");
             Serial.println("[LoRa] SNR: " + String(stats.lastSNR) + " dB");
             Serial.println("[LoRa] Source: " + String(packet->sourceID) + ", Hops: " + String(packet->hops) + "/" + String(packet->maxHops));
+            Serial.println("[LoRa] Message Type: " + String(packet->messageType));
         }
         
         // Agregar a seen packets para evitar futuras retransmisiones
         addToRecentPackets(packet->sourceID, packet->packetID);
         
-        // Verificar si debe retransmitirse
-        if (perhapsRebroadcast(packet)) {
-            stats.rebroadcasts++;
-            // SOLO mostrar en modo ADMIN
-            if (configManager.isAdminMode()) {
-                Serial.println("[LoRa] Packet programado para retransmisión");
-            }
-        }
-        
-        // Procesar contenido según tipo de mensaje
+        // IMPORTANTE: Procesar contenido ANTES del retransmit
         switch (packet->messageType) {
             case MSG_GPS_DATA:
                 // Procesar datos GPS recibidos
@@ -180,6 +169,42 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                                      ": " + String(lat, 6) + "," + String(lon, 6));
                     }
                 }
+                break;
+                
+            case MSG_DISCOVERY_REQUEST:
+                // NUEVO: Procesar solicitud de discovery
+                if (configManager.isAdminMode()) {
+                    Serial.println("[LoRa] Discovery request recibido de device " + String(packet->sourceID));
+                }
+                // Procesar inmediatamente
+                processDiscoveryRequest(packet);
+                break;
+                
+            case MSG_DISCOVERY_RESPONSE:
+                // NUEVO: Procesar respuesta de discovery
+                if (configManager.isAdminMode()) {
+                    Serial.println("[LoRa] Discovery response recibido de device " + String(packet->sourceID));
+                }
+                // Procesar inmediatamente
+                processDiscoveryResponse(packet);
+                break;
+                
+            case MSG_CONFIG_CMD:
+                // NUEVO: Procesar comando de configuración remota
+                if (configManager.isAdminMode()) {
+                    Serial.println("[LoRa] Comando de configuración recibido de device " + String(packet->sourceID));
+                }
+                // Procesar inmediatamente
+                processRemoteConfigCommand(packet);
+                break;
+                
+            case MSG_CONFIG_RESPONSE:
+                // NUEVO: Procesar respuesta de configuración
+                if (configManager.isAdminMode()) {
+                    Serial.println("[LoRa] Respuesta de configuración recibida de device " + String(packet->sourceID));
+                }
+                // Procesar inmediatamente
+                processRemoteConfigResponse(packet);
                 break;
                 
             case MSG_HEARTBEAT:
@@ -197,6 +222,32 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                 break;
         }
         
+        // Verificar si debe retransmitirse (solo para ciertos tipos de mensaje)
+        bool shouldRetransmit = false;
+        if (packet->messageType == MSG_GPS_DATA || packet->messageType == MSG_CONFIG_CMD || 
+            packet->messageType == MSG_DISCOVERY_REQUEST) {
+            shouldRetransmit = true;
+        }
+        
+        // DEBUG: Verificar por qué no se retransmite
+        Serial.println("[DEBUG] Message type: " + String(packet->messageType));
+        Serial.println("[DEBUG] Should retransmit: " + String(shouldRetransmit));
+        
+        if (shouldRetransmit) {
+            Serial.println("[DEBUG] Llamando perhapsRebroadcast()...");
+            if (perhapsRebroadcast(packet)) {
+                stats.rebroadcasts++;
+                // SOLO mostrar en modo ADMIN
+                if (configManager.isAdminMode()) {
+                    Serial.println("[LoRa] Packet programado para retransmisión");
+                }
+            } else {
+                Serial.println("[DEBUG] perhapsRebroadcast() devolvió false");
+            }
+        } else {
+            Serial.println("[DEBUG] Message type no válido para retransmisión");
+        }
+        
         return true;
         
     } else {
@@ -210,7 +261,7 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
 }
 
 /*
- * VERIFICAR SI HAY PACKETS DISPONIBLES
+ * VERIFICAR SI HAY PACKETS DISPONIBLES (sin cambios)
  */
 bool LoRaManager::isPacketAvailable() {
     // Verificar flag de recepción de RadioLib
@@ -218,7 +269,7 @@ bool LoRaManager::isPacketAvailable() {
 }
 
 /*
- * PROCESAR PACKET GPS RECIBIDO
+ * PROCESAR PACKET GPS RECIBIDO (sin cambios)
  */
 bool LoRaManager::processGPSPacket(const LoRaPacket* packet, float* lat, float* lon, uint32_t* timestamp, uint16_t* sourceID) {
     if (!packet || packet->messageType != MSG_GPS_DATA) return false;
@@ -234,7 +285,7 @@ bool LoRaManager::processGPSPacket(const LoRaPacket* packet, float* lat, float* 
 }
 
 /*
- * LOOP PRINCIPAL DE ACTUALIZACIÓN
+ * LOOP PRINCIPAL DE ACTUALIZACIÓN (sin cambios)
  */
 void LoRaManager::update() {
     // Limpiar packets antiguos cada 30 segundos
