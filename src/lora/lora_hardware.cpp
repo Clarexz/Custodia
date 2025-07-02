@@ -6,7 +6,6 @@
  */
 
 #include "../lora.h"
-#include "../config.h"
 
 // Instancia global del LoRaManager
 LoRaManager loraManager;
@@ -55,7 +54,7 @@ bool LoRaManager::begin() {
 }
 
 bool LoRaManager::begin(uint16_t devID) {
-    Serial.println("[LoRa] Inicializando sistema LoRa...");
+    //Serial.println("[LoRa] Inicializando sistema LoRa...");
     
     // Establecer device ID
     deviceID = devID;
@@ -63,7 +62,7 @@ bool LoRaManager::begin(uint16_t devID) {
     // Obtener role desde ConfigManager si está disponible
     if (configManager.getConfig().role != ROLE_NONE) {
         currentRole = configManager.getConfig().role;
-        Serial.println("[LoRa] Role obtenido de config: " + String(currentRole));
+        //Serial.println("[LoRa] Role obtenido de config: " + String(currentRole));
     }
     
     // Inicializar hardware
@@ -99,11 +98,11 @@ bool LoRaManager::begin(uint16_t devID) {
     // ACTUALIZADO: Mostrar información con frecuencia dinámica
     float frequency = configManager.getFrequencyMHz();
     Serial.println("[LoRa] Sistema LoRa inicializado exitosamente");
-    Serial.println("[LoRa] Device ID: " + String(deviceID));
-    Serial.println("[LoRa] Role: " + String(currentRole));
-    Serial.println("[LoRa] Región: " + configManager.getConfig().region);
-    Serial.println("[LoRa] Frecuencia: " + String(frequency) + " MHz");
-    Serial.println("[LoRa] Algoritmo Meshtastic: ACTIVADO");
+    //Serial.println("[LoRa] Device ID: " + String(deviceID));
+    //Serial.println("[LoRa] Role: " + String(currentRole));
+    //Serial.println("[LoRa] Región: " + configManager.getConfig().region);
+    //Serial.println("[LoRa] Frecuencia: " + String(frequency) + " MHz");
+    //Serial.println("[LoRa] Algoritmo Meshtastic: ACTIVADO");
     
     return true;
 }
@@ -134,7 +133,7 @@ bool LoRaManager::initRadio() {
  * CONFIGURACIÓN DE PARÁMETROS DE RADIO - ACTUALIZADA
  */
 bool LoRaManager::configureRadio() {
-    Serial.println("[LoRa] Configurando parámetros de radio...");
+    //Serial.println("[LoRa] Configurando parámetros de radio...");
     
     int state;
     
@@ -148,7 +147,7 @@ bool LoRaManager::configureRadio() {
         Serial.println("[LoRa] Error code: " + String(state));
         return false;
     }
-    Serial.println("[LoRa] Frecuencia configurada: " + String(frequency) + " MHz");
+    //Serial.println("[LoRa] Frecuencia configurada: " + String(frequency) + " MHz");
     
     // Configurar potencia de transmisión
     state = radio.setOutputPower(LORA_TX_POWER);

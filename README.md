@@ -2,17 +2,18 @@
 
 **Firmware personalizado basado en Meshtastic para tracking GPS off-grid**
 
-![Estado del Proyecto](https://img.shields.io/badge/Estado-Fase%205%20COMPLETADA-brightgreen)
+![Estado del Proyecto](https://img.shields.io/badge/Estado-COMPLETAMENTE%20MODULARIZADO-brightgreen)
 ![Versión](https://img.shields.io/badge/Versión-0.3-blue)
 ![Plataforma](https://img.shields.io/badge/Plataforma-ESP32--S3-orange)
 ![Framework](https://img.shields.io/badge/Framework-Arduino-teal)
 ![Algoritmo](https://img.shields.io/badge/Algoritmo-Meshtastic%20Completo-purple)
+![Regiones](https://img.shields.io/badge/Regiones-US%2FEU%2FCH%2FAS%2FJP-red)
 
 ---
 
 ## Descripción del Proyecto
 
-Sistema de tracking GPS completamente off-grid usando una red mesh LoRa con **algoritmo completo de Meshtastic**. Implementación que integra el sistema de Managed Flood Routing con **modos de visualización flexibles**, **comandos en tiempo real**, **soporte multi-región** y **configuración remota**.
+Sistema de tracking GPS completamente off-grid usando una red mesh LoRa con **algoritmo completo de Meshtastic**. Implementación **completamente modularizada** que integra el sistema de Managed Flood Routing con **modos de visualización flexibles**, **comandos en tiempo real**, **soporte multi-región** y **configuración remota completa**.
 
 ### Arquitectura del Sistema
 - **Un solo firmware** para todos los dispositivos
@@ -25,6 +26,7 @@ Sistema de tracking GPS completamente off-grid usando una red mesh LoRa con **al
 - **Comandos en tiempo real** sin reinicio
 - **Soporte multi-región LoRa** (US/EU/CH/AS/JP)
 - **Configuración remota** entre dispositivos
+- **Arquitectura completamente modular** para mantenibilidad
 
 ---
 
@@ -33,7 +35,7 @@ Sistema de tracking GPS completamente off-grid usando una red mesh LoRa con **al
 | Componente | Modelo | Estado | Función |
 |------------|--------|--------|---------|
 | **Microcontrolador** | XIAO ESP32S3 | Implementado | Control principal y procesamiento |
-| **Módulo LoRa** | Wio SX1262 | MESH FUNCIONAL | Comunicación mesh de largo alcance |
+| **Módulo LoRa** | Wio SX1262 | **MESH FUNCIONAL** | Comunicación mesh de largo alcance |
 | **Pantalla** | ESP32-compatible TFT | Futuro | Visualización (solo RECEIVER) |
 | **GPS** | Módulo compatible UART | Simulado | Geolocalización |
 
@@ -44,79 +46,33 @@ Sistema de tracking GPS completamente off-grid usando una red mesh LoRa con **al
 ### TRACKER
 - Transmite su posición GPS periódicamente
 - Opera autónomamente sin interfaz de usuario
-- Mesh routing con CLIENT priority
-- Responde a configuración remota
+- **Mesh routing con CLIENT priority**
+- **Battery monitoring integrado**
+- **Responde a configuración remota**
 
 ### REPEATER
 - Actúa como extensor de rango
-- Retransmite mensajes de otros dispositivos con ROUTER priority
-- SNR-based intelligent delays
-- Responde a configuración remota
+- Retransmite mensajes de otros dispositivos con **ROUTER priority**
+- **SNR-based intelligent delays**
+- **Responde a configuración remota**
 
 ### RECEIVER
 - Recibe y visualiza posiciones GPS de toda la red
-- Duplicate detection y mesh statistics
-- Puede configurar otros dispositivos remotamente
-- Discovery de dispositivos en red
+- **Duplicate detection y mesh statistics**
+- **Puede configurar otros dispositivos remotamente**
+- **Discovery de dispositivos en red**
 
 ---
 
 ## Estado Actual del Proyecto
 
-### **FASE 1: Sistema de Configuración Serial** - COMPLETADA
+### **TODAS LAS FASES COMPLETADAS**
 
-**Funcionalidades implementadas:**
-- [x] **Parser robusto** de comandos seriales con validación completa
-- [x] **Persistencia en EEPROM** usando Preferences
-- [x] **Sistema de estados** (BOOT, CONFIG_MODE, RUNNING, SLEEP)
-- [x] **Validación automática** de configuración completa
-- [x] **Manejo de errores** con confirmaciones de seguridad
-- [x] **Documentación integrada** (comando HELP)
-- [x] **Indicadores visuales LED** según estado/rol
-
-### **FASE 2: GPS Simulado** - COMPLETADA
-
-**Funcionalidades implementadas:**
-- [x] **Sistema GPS** con 5 modos de simulación
-- [x] **Integración con configuración** existente
-- [x] **Diferentes comportamientos GPS** según rol del dispositivo
-- [x] **Transmisión periódica** de coordenadas en modo TRACKER
-- [x] **Validación y formateo** de datos GPS
-
-### **FASE 3: LoRa + Mesh Completo** - COMPLETADA
-
-**Funcionalidades implementadas:**
-- [x] **Comunicación LoRa básica** - SX1262 completamente funcional
-- [x] **Protocolo de packets optimizado** - Formato binario eficiente
-- [x] **Duplicate Packet Detection** - Sistema `wasSeenRecently()` de Meshtastic
-- [x] **SNR-based Intelligent Delays** - Nodos lejanos retransmiten primero
-- [x] **Role-based Priority** - REPEATERS con 160ms menos delay (como ROUTERS)
-- [x] **Managed Flood Routing** - Algoritmo completo de FloodingRouter.cpp
-- [x] **Hop Management** - Control de TTL con máximo 3 saltos
-- [x] **Mesh Statistics** - Tracking de duplicados, retransmisiones, etc.
-- [x] **Contention Window** - Valores exactos de Meshtastic (CWmin=2, CWmax=8)
-
-### **FASE 4: Modos de Visualización** - COMPLETADA
-
-**Funcionalidades implementadas:**
-- [x] **Modo SIMPLE** - Vista limpia con solo packet format según key requirements
-- [x] **Modo ADMIN** - Vista completa con estadísticas mesh y diagnóstico
-- [x] **Comando CONFIG_DATA_MODE** - Configuración durante setup
-- [x] **Comandos MODE en tiempo real** - Cambio sin reinicio durante operación
-- [x] **Auto-guardado automático** - Cambios persisten en EEPROM
-- [x] **Battery monitoring** - Voltage de batería en cada packet
-- [x] **Soporte todos los roles** - TRACKER, REPEATER, RECEIVER
-
-### **FASE 5: Configuración Remota y Multi-Región** - COMPLETADA
-
-**Funcionalidades implementadas:**
-- [x] **Sistema Multi-Región LoRa** - US (915MHz), EU (868MHz), CH (470MHz), AS (433MHz), JP (920MHz)
-- [x] **Comando CONFIG_REGION** - Configuración de región durante setup
-- [x] **Discovery de Dispositivos** - Comando DISCOVER para encontrar dispositivos activos
-- [x] **Configuración Remota Completa** - RECEIVER puede configurar otros dispositivos
-- [x] **Comandos Remotos** - REMOTE_GPS_INTERVAL, REMOTE_DATA_MODE, REMOTE_STATUS, REMOTE_REBOOT
-- [x] **Mensajes de Configuración** - MSG_DISCOVERY_REQUEST/RESPONSE, MSG_CONFIG_CMD/RESPONSE
-- [x] **Arquitectura Modular** - Código LoRa separado en módulos especializados
+**FASE 1: Sistema de Configuración Serial** - COMPLETADA  
+**FASE 2: GPS Simulado** - COMPLETADA  
+**FASE 3: LoRa + Mesh Completo** - COMPLETADA  
+**FASE 4: Modos de Visualización** - COMPLETADA  
+**FASE 5: Configuración Remota y Multi-Región** - COMPLETADA  
 
 ---
 
@@ -223,29 +179,11 @@ EXIT                                     # Salir de configuración remota
 | **AS** | `AS` | 433 MHz | Asia (general) |
 | **JP** | `JP` | 920 MHz | Japón |
 
-### Configuración de Región
-
-```bash
-# Durante configuración inicial
-config> CONFIG_REGION US
-[OK] Región configurada: US (Estados Unidos/México)
-[INFO] Frecuencia: 915.0 MHz
-[WARNING] Reinicie el dispositivo después de CONFIG_SAVE para aplicar nueva frecuencia
-
-config> CONFIG_SAVE
-[OK] Configuración guardada exitosamente.
-
-# El dispositivo usará 915 MHz después del reinicio
-```
-
 ---
 
 ## Modos de Visualización
 
 ### Modo SIMPLE
-
-**Comando durante configuración**: `CONFIG_DATA_MODE SIMPLE`  
-**Comando durante operación**: `MODE SIMPLE`
 
 **Propósito**: Vista limpia que muestra solo el packet básico según los key requirements del proyecto.
 
@@ -258,9 +196,6 @@ Envío realizado
 ```
 
 ### Modo ADMIN
-
-**Comando durante configuración**: `CONFIG_DATA_MODE ADMIN`  
-**Comando durante operación**: `MODE ADMIN`
 
 **Propósito**: Vista completa con toda la información de mesh, estadísticas y diagnóstico.
 
@@ -285,6 +220,161 @@ Retransmisiones: 3
 Próxima transmisión en 15 segundos
 ==========================================
 ```
+
+---
+
+## Arquitectura del Código (Completamente Modular)
+
+### Estructura del Proyecto
+
+```
+src/
+├── main.cpp
+├── battery/
+│   ├── battery_manager.h
+│   └── battery_manager.cpp
+├── config/
+│   ├── config_manager.h
+│   ├── config_manager.cpp
+│   ├── config_commands.h
+│   ├── config_commands.cpp
+│   ├── config_help.h
+│   └── config_help.cpp
+├── gps/
+│   ├── gps_manager.h
+│   ├── gps_manager
+│   ├── gps_simulation.h
+│   ├── gps_simulation.cpp
+│   ├── gps_utils.h
+│   └── gps_utils.cpp
+├── roles/
+│   ├── role_manager.h
+│   ├── role_manager.cpp         
+│   ├── tracker_role.h
+│   ├── tracker_role.cpp
+│   ├── repeater_role.h
+│   ├── repeater_role.cpp
+│   ├── receiver_role.h
+│   └── receiver_role.cpp
+├── display/
+│   ├── display_manager.h
+│   ├── display_manager.cpp      
+│   ├── simple_display.h
+│   ├── simple_display.cpp
+│   ├── admin_display.h
+│   └── admin_display.cpp
+├── serial/
+│   ├── serial_handler.h
+│   ├── serial_handler.cpp
+│   ├── remote_commands.h
+│   └── remote_commands.cpp
+├── lora.h
+└── lora/
+    ├── lora_types.h
+    ├── lora_hardware.h
+    ├── lora_hardware.cpp
+    ├── lora_manager.h
+    ├── lora_manager.cpp
+    ├── lora_comm.h
+    ├── lora_comm.cpp
+    ├── lora_packet.h
+    ├── lora_packet.cpp
+    ├── lora_mesh.h
+    ├── lora_mesh.cpp
+    ├── lora_remote_config.h
+    └── lora_remote_config.cpp
+```
+
+---
+
+## Módulos Principales
+
+### **config/** - Sistema de Configuración
+- **config_manager**: Core del sistema (load/save/begin)
+- **config_commands**: Manejadores de comandos seriales
+- **config_help**: Sistema de ayuda y documentación
+
+### **gps/** - Sistema GPS
+- **gps_manager**: Coordinador principal sin dependencias
+- **gps_simulation**: Todos los modos de simulación
+- **gps_utils**: Cálculos geográficos (Haversine, bearing)
+
+### **battery/** - Monitoreo de Batería
+- **battery_manager**: Sistema independiente extraído de GPS
+- Simulación de descarga gradual
+- Integración en packet format
+
+### **lora/** - Sistema LoRa Modular
+- **lora_hardware**: SX1262 + soporte multi-región
+- **lora_manager**: Coordinación y utilidades
+- **lora_comm**: TX/RX básica + mensajes remotos
+- **lora_packet**: Procesamiento y validación
+- **lora_mesh**: Algoritmo Meshtastic completo
+- **lora_remote_config**: Discovery + comandos remotos
+
+### **roles/** - Lógica por Roles
+- **role_manager**: Coordinador de roles
+- **tracker_role**: Lógica específica TRACKER
+- **repeater_role**: Lógica específica REPEATER  
+- **receiver_role**: Lógica específica RECEIVER
+
+### **display/** - Visualización
+- **display_manager**: Coordinador de modos
+- **simple_display**: Modo SIMPLE
+- **admin_display**: Modo ADMIN
+
+### **serial/** - Comandos Seriales
+- **serial_handler**: Router de comandos
+- **remote_commands**: Comandos remotos para RECEIVER
+
+---
+
+## Flujo de Datos Modular
+
+```
+[main.cpp] 
+    ↓
+[role_manager] → Coordinación según rol configurado
+    ↓
+[tracker_role / repeater_role / receiver_role]
+    ↓
+[gps_manager] → [gps_simulation] + [gps_utils]
+    ↓
+[battery_manager] → Voltage independiente
+    ↓
+[lora_manager] → [lora_hardware] + [lora_comm] + [lora_mesh]
+    ↓
+[display_manager] → [simple_display / admin_display]
+    ↓
+[serial_handler] → [remote_commands] (solo RECEIVER)
+```
+
+---
+
+## Packet Format y Battery Monitoring
+
+### Formato Exacto (Según Key Requirements)
+
+**Estructura**: `[deviceID, latitude, longitude, batteryvoltage, timestamp]`
+
+**Ejemplo**: `[001,25.302677,-98.277664,4100,1718661234]`
+
+### Campos del Packet
+
+| Campo | Descripción | Formato | Ejemplo |
+|-------|-------------|---------|---------|
+| `deviceID` | ID único del dispositivo | 001-999 | `001` |
+| `latitude` | Latitud en grados decimales | 6 decimales | `25.302677` |
+| `longitude` | Longitud en grados decimales | 6 decimales | `-98.277664` |
+| `batteryvoltage` | Voltaje de batería | milivolts (mV) | `4100` |
+| `timestamp` | Unix timestamp | segundos | `1718661234` |
+
+### Battery Monitoring
+
+- **Voltage inicial**: ~4200mV (4.2V) - Batería llena
+- **Descarga simulada**: ~0.1mV por minuto
+- **Voltage mínimo**: 3200mV (3.2V) - Batería descargada
+- **Reset**: Reiniciar dispositivo para battery a nivel alto
 
 ---
 
@@ -333,193 +423,6 @@ remote_001> EXIT
 
 ---
 
-## Guía de Uso Completa
-
-### Configuración de un TRACKER (con región)
-
-```bash
-# 1. Conectar dispositivo y abrir monitor serial
-# 2. El sistema iniciará en modo configuración automáticamente
-
-config> CONFIG_ROLE TRACKER
-[OK] Rol configurado: TRACKER
-
-config> CONFIG_DEVICE_ID 001
-[OK] Device ID configurado: 1
-
-config> CONFIG_GPS_INTERVAL 15
-[OK] Intervalo GPS configurado: 15 segundos
-
-config> CONFIG_DATA_MODE SIMPLE
-[OK] Modo de datos configurado: SIMPLE
-
-config> CONFIG_REGION US
-[OK] Región configurada: US (Estados Unidos/México)
-[INFO] Frecuencia: 915.0 MHz
-
-config> STATUS
-=== CONFIGURACIÓN ACTUAL ===
-Rol: TRACKER
-Device ID: 1
-Intervalo GPS: 15 segundos
-Máximo saltos: 3
-Modo de datos: SIMPLE
-Región LoRa: US (915.0 MHz)
-============================
-
-config> CONFIG_SAVE
-[OK] Configuración guardada exitosamente.
-
-config> START
-[OK] Iniciando modo operativo...
-
-# Sistema operando en modo SIMPLE
-[001,25.302677,-98.277664,4100,1718661234]
-Envío realizado
-
-# Cambio a modo ADMIN en tiempo real
-MODE ADMIN
-[OK] Modo cambiado a: ADMIN
-[INFO] Mostrando información completa
-
-[TRACKER] === TRANSMISIÓN GPS + LoRa MESH ===
-Device ID: 1
-Role: TRACKER (CLIENT priority)
-Región: US (Estados Unidos/México)
-Frecuencia: 915.0 MHz
-...
-```
-
-### Configuración de un RECEIVER (con capacidades remotas)
-
-```bash
-config> CONFIG_ROLE RECEIVER
-[OK] Rol configurado: RECEIVER
-
-config> CONFIG_DEVICE_ID 003
-[OK] Device ID configurado: 3
-
-config> CONFIG_REGION US
-[OK] Región configurada: US (Estados Unidos/México)
-
-config> CONFIG_DATA_MODE ADMIN
-[OK] Modo de datos configurado: ADMIN
-
-config> CONFIG_SAVE
-config> START
-
-# Una vez operativo, comandos especiales disponibles:
-DISCOVER
-REMOTE_CONFIG 001
-HELP
-```
-
----
-
-## Packet Format y Battery Monitoring
-
-### Formato Exacto (Según Key Requirements)
-
-**Estructura**: `[deviceID, latitude, longitude, batteryvoltage, timestamp]`
-
-**Ejemplo**: `[001,25.302677,-98.277664,4100,1718661234]`
-
-### Campos del Packet
-
-| Campo | Descripción | Formato | Ejemplo |
-|-------|-------------|---------|---------|
-| `deviceID` | ID único del dispositivo | 001-999 | `001` |
-| `latitude` | Latitud en grados decimales | 6 decimales | `25.302677` |
-| `longitude` | Longitud en grados decimales | 6 decimales | `-98.277664` |
-| `batteryvoltage` | Voltaje de batería | milivolts (mV) | `4100` |
-| `timestamp` | Unix timestamp | segundos | `1718661234` |
-
-### Battery Monitoring
-
-- **Voltage inicial**: ~4200mV (4.2V) - Batería llena
-- **Descarga simulada**: ~0.1mV por minuto
-- **Voltage mínimo**: 3200mV (3.2V) - Batería descargada
-- **Reset**: Reiniciar dispositivo para battery a nivel alto
-
----
-
-## Arquitectura del Código
-
-### Estructura del Proyecto Modular
-
-```
-src/
-├── main.cpp                 # Loop principal y lógica de estados
-├── config.h                # Sistema de configuración - Declaraciones
-├── config.cpp              # Sistema de configuración - Implementación
-├── gps.h                   # Sistema GPS - Declaraciones
-├── gps.cpp                 # Sistema GPS - Implementación + Battery
-├── lora.h                  # Sistema LoRa + Mesh - Declaraciones principales
-|-- lora/
-      ├── lora_packet.cpp         # Procesamiento y validación de packets
-      ├── lora_comm.cpp           # Transmisión y recepción básica
-      ├── lora_hardware.cpp       # Inicialización hardware SX1262 + Multi-región
-      ├── lora_manager.cpp        # Coordinación y utilidades
-      ├── lora_mesh.cpp           # Algoritmo Meshtastic completo
-      └── lora_remote_config.cpp  # Configuración remota y discovery
-
-platformio.ini              # Configuración del proyecto PlatformIO
-README.md                   # Esta documentación
-```
-
-### Flujo de Datos Enhanced con Configuración Remota
-
-```
-[Startup] → [Config Manager] → [EEPROM Load] → [Estado Inicial]
-                                    ↓
-[CONFIG_MODE] ←→ [Comandos Seriales] ←→ [Validación + Región]
-      ↓                                      ↓
-[CONFIG_SAVE] → [EEPROM] → [START] → [RUNNING]
-                                        ↓
-                              [GPS Manager] → [Simulación + Battery]
-                                        ↓
-                              [LoRa Manager] → [Meshtastic + Multi-región]
-                                        ↓
-                     [Duplicate Detection] → [SNR Delays] → [Mesh Routing]
-                                        ↓
-                              [Remote Config] → [Discovery + Commands]
-                                        ↓
-                              [Data Mode] → [SIMPLE | ADMIN Display]
-```
-
-### Módulos Principales
-
-#### **ConfigManager** (`config.h/cpp`)
-**Responsabilidades:**
-- Procesamiento de comandos seriales
-- Persistencia en EEPROM
-- Validación de parámetros
-- Control de estados del sistema
-- **Gestión de regiones LoRa**
-- **Gestión de modos de visualización**
-- **Comandos en tiempo real**
-
-#### **GPSManager** (`gps.h/cpp`)
-**Responsabilidades:**
-- Simulación GPS realista
-- Cálculos geográficos (Haversine)
-- Formateo de datos para transmisión
-- Diferentes modos de movimiento
-- Battery monitoring integrado
-
-#### **LoRaManager** (Modular - 6 archivos)
-**Responsabilidades principales:**
-
-**`lora.h`** - Declaraciones principales y estructuras
-**`lora_hardware.cpp`** - Hardware SX1262 + soporte multi-región
-**`lora_comm.cpp`** - Transmisión y recepción básica
-**`lora_packet.cpp`** - Procesamiento y validación de packets
-**`lora_mesh.cpp`** - Algoritmo completo de Meshtastic
-**`lora_remote_config.cpp`** - Configuración remota y discovery
-**`lora_manager.cpp`** - Coordinación y utilidades
-
----
-
 ## Algoritmo Meshtastic Implementado
 
 ### Core Components
@@ -560,6 +463,48 @@ struct LoRaStats {
     uint32_t hopLimitReached;   // Packets descartados por hop limit
     float lastRSSI, lastSNR;    // Calidad de señal
 };
+```
+
+---
+
+## Guía de Uso
+
+### Configuración de un TRACKER (con región)
+
+```bash
+# 1. Conectar dispositivo y abrir monitor serial
+# 2. El sistema iniciará en modo configuración automáticamente
+
+config> CONFIG_ROLE TRACKER
+[OK] Rol configurado: TRACKER
+
+config> CONFIG_DEVICE_ID 001
+[OK] Device ID configurado: 1
+
+config> CONFIG_GPS_INTERVAL 15
+[OK] Intervalo GPS configurado: 15 segundos
+
+config> CONFIG_DATA_MODE SIMPLE
+[OK] Modo de datos configurado: SIMPLE
+
+config> CONFIG_REGION US
+[OK] Región configurada: US (Estados Unidos/México)
+[INFO] Frecuencia: 915.0 MHz
+
+config> CONFIG_SAVE
+[OK] Configuración guardada exitosamente.
+
+config> START
+[OK] Iniciando modo operativo...
+
+# Sistema operando en modo SIMPLE
+[001,25.302677,-98.277664,4100,1718661234]
+Envío realizado
+
+# Cambio a modo ADMIN en tiempo real
+MODE ADMIN
+[OK] Modo cambiado a: ADMIN
+[INFO] Mostrando información completa
 ```
 
 ---
@@ -634,7 +579,6 @@ struct LoRaStats {
 | **Real mesh testing** | **FUNCIONANDO** | **Demo exitosa realizada** |
 | **Multi-region support** | **AGREGADO** | **US/EU/CH/AS/JP frequencies** |
 
-
 ### System Features COMPLETADAS
 
 | Feature | Estado | Progreso |
@@ -645,21 +589,7 @@ struct LoRaStats {
 | **Auto-save configuration** | **COMPLETADO** | **EEPROM persistence** |
 | **Multi-region LoRa** | **COMPLETADO** | **5 regiones soportadas** |
 | **Remote configuration** | **COMPLETADO** | **Discovery + Remote commands** |
-
----
-
-## Documentación Adicional
-
-### Recursos Útiles
-- [Documentación de Meshtastic](https://meshtastic.org/) - Referencia del protocolo original
-- [ESP32-S3 Datasheet](https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf)
-- [SX1262 Datasheet](https://www.semtech.com/products/wireless-rf/lora-transceivers/sx1262)
-- [RadioLib Documentation](https://github.com/jgromes/RadioLib)
-- [LoRa Regional Parameters](https://lora-alliance.org/resource_hub/rp2-1-0-3-lorawan-regional-parameters/)
-
-### Algoritmo Meshtastic
-- [Managed Flood Routing Explained](https://meshtastic.org/blog/why-meshtastic-uses-managed-flood-routing/)
-- [Mesh Broadcast Algorithm](https://meshtastic.org/docs/overview/mesh-algo/)
+| **Modular architecture** | **COMPLETADO** | **33 archivos especializados** |
 
 ---
 
@@ -695,48 +625,18 @@ Basado en el algoritmo de Meshtastic y las limitaciones del protocolo:
 
 ---
 
-## Testing y Validación
+## Documentación Adicional
 
-### Tests Realizados
+### Recursos Útiles
+- [Documentación de Meshtastic](https://meshtastic.org/) - Referencia del protocolo original
+- [ESP32-S3 Datasheet](https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf)
+- [SX1262 Datasheet](https://www.semtech.com/products/wireless-rf/lora-transceivers/sx1262)
+- [RadioLib Documentation](https://github.com/jgromes/RadioLib)
+- [LoRa Regional Parameters](https://lora-alliance.org/resource_hub/rp2-1-0-3-lorawan-regional-parameters/)
 
-#### **Comunicación Básica** 
-- [x] Transmisión TRACKER → RECEIVER
-- [x] Retransmisión via REPEATER
-- [x] Duplicate detection funcionando
-- [x] SNR-based delays operativos
-
-#### **Configuración Remota**
-- [x] Discovery de dispositivos
-- [x] Comandos remotos (GPS_INTERVAL, DATA_MODE)
-- [x] Respuestas y confirmaciones
-- [x] Error handling
-
-#### **Multi-Región**
-- [x] Configuración de frecuencias por región
-- [x] Persistencia en EEPROM
-- [x] Aplicación después de reinicio
-
----
-
-## Seguridad y Consideraciones
-
-### Aspectos de Seguridad
-
-**Características Actuales:**
-- **Sin encryption**: Datos transmitidos en claro (por simplicidad)
-- **Device ID único**: Previene colisiones básicas
-- **Duplicate detection**: Previene replay attacks accidentales
-
-**Consideraciones de Seguridad:**
-- Todos los datos GPS son visibles en la red
-- Configuración remota sin autenticación
-- Posible interferencia o jamming
-
-**Recomendaciones para Producción:**
-- Implementar encryption básico (AES)
-- Autenticación para comandos remotos
-- Rate limiting para prevenir spam
-- Whitelist de device IDs permitidos
+### Algoritmo Meshtastic
+- [Managed Flood Routing Explained](https://meshtastic.org/blog/why-meshtastic-uses-managed-flood-routing/)
+- [Mesh Broadcast Algorithm](https://meshtastic.org/docs/overview/mesh-algo/)
 
 ---
 
@@ -750,7 +650,10 @@ Basado en el algoritmo de Meshtastic y las limitaciones del protocolo:
 
 ## Changelog
 
-### Versión 0.3 (Actual)
+### Versión 0.4 (Actual)
+- **Proyecto modularizado 100%**
+
+### Versión 0.3
 - **Sistema Multi-Región LoRa** - Soporte US/EU/CH/AS/JP
 - **Configuración Remota Completa** - Discovery + Remote commands
 - **Arquitectura Modular** - Código LoRa reorganizado
@@ -779,4 +682,4 @@ Basado en el algoritmo de Meshtastic y las limitaciones del protocolo:
 ---
 
 **Última actualización**: Julio 1, 2025  
-**Versión del firmware**: 0.3
+**Versión del firmware**: 0.4

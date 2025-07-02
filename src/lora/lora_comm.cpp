@@ -5,7 +5,6 @@
  */
 
 #include "../lora.h"
-#include "../config.h"
 
 /*
  * ENVÍO DE DATOS GPS (sin cambios)

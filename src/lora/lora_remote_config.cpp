@@ -8,8 +8,8 @@
  */
 
 #include "../lora.h"
-#include "../config.h"
-#include "../gps.h"
+#include "../gps/gps_manager.h"
+#include "../battery/battery_manager.h"
 
 /*
  * DISCOVERY DE DISPOSITIVOS
@@ -49,7 +49,7 @@ bool LoRaManager::sendDiscoveryResponse(uint16_t requestorID) {
         lat = gpsManager.getLatitude();
         lon = gpsManager.getLongitude();
         timestamp = gpsManager.getTimestamp();
-        batteryVoltage = gpsManager.getBatteryVoltage();
+        batteryVoltage = batteryManager.getVoltage();
     }
     
     info.role = config.role;
@@ -167,7 +167,7 @@ bool LoRaManager::processRemoteConfigCommand(const LoRaPacket* packet) {
             uint16_t batteryVoltage = 4000; // Default
             
             if (gpsManager.hasValidFix()) {
-                batteryVoltage = gpsManager.getBatteryVoltage();
+                batteryVoltage = batteryManager.getVoltage();
             }
             
             success = true;

@@ -107,3 +107,30 @@ void LoRaManager::resetStats() {
     stats.hopLimitReached = 0;
     Serial.println("[LoRa] Estadísticas reseteadas");
 }
+
+/*
+ * MÉTODOS DE ROLE MANAGEMENT
+ */
+void LoRaManager::setRole(DeviceRole role) {
+    currentRole = role;
+    Serial.println("[LoRa] Role configurado: " + String(role));
+}
+
+DeviceRole LoRaManager::getRole() {
+    return currentRole;
+}
+
+/*
+ * MÉTODOS DE ESTADÍSTICAS MESH
+ */
+uint32_t LoRaManager::getDuplicatesIgnored() {
+    return stats.duplicatesIgnored;
+}
+
+uint32_t LoRaManager::getRebroadcasts() {
+    return stats.rebroadcasts;
+}
+
+uint32_t LoRaManager::getHopLimitReached() {
+    return stats.hopLimitReached;
+}
