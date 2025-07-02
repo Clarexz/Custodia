@@ -6,6 +6,7 @@
 #include "../config/config_manager.h"
 #include "../lora.h"
 #include "../roles/receiver_role.h"
+#include "../roles/role_manager.h" 
 
 // Instancia global
 RemoteCommands remoteCommands;
@@ -54,6 +55,16 @@ void RemoteCommands::handleNormalModeCommands(String input) {
     }
     else if (input == "INFO") {
         configManager.handleInfo();
+    }
+    // AGREGAR ESTA LÍNEA:
+    else if (input == "CONFIG_RESET") {
+        configManager.handleConfigReset();
+    }
+    // AGREGAR ESTA LÍNEA:
+    else if (input == "CONFIG") {
+        configManager.setState(STATE_CONFIG_MODE);
+        roleManager.setLoRaInitialized(false);
+        Serial.println("[INFO] Entrando en modo configuración.");
     }
     else if (input == "HELP") {
         Serial.println("\n=== COMANDOS RECEIVER ===");

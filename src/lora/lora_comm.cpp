@@ -227,26 +227,40 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
             packet->messageType == MSG_DISCOVERY_REQUEST) {
             shouldRetransmit = true;
         }
-        
+
         // DEBUG: Verificar por qué no se retransmite
-        Serial.println("[DEBUG] Message type: " + String(packet->messageType));
-        Serial.println("[DEBUG] Should retransmit: " + String(shouldRetransmit));
-        
-        if (shouldRetransmit) {
-            Serial.println("[DEBUG] Llamando perhapsRebroadcast()...");
-            if (perhapsRebroadcast(packet)) {
-                stats.rebroadcasts++;
-                // SOLO mostrar en modo ADMIN
-                if (configManager.isAdminMode()) {
-                    Serial.println("[LoRa] Packet programado para retransmisión");
-                }
-            } else {
-                Serial.println("[DEBUG] perhapsRebroadcast() devolvió false");
-            }
-        } else {
-            Serial.println("[DEBUG] Message type no válido para retransmisión");
+        if (configManager.isAdminMode())
+        {
+            Serial.println("[DEBUG] Message type: " + String(packet->messageType));
+            Serial.println("[DEBUG] Should retransmit: " + String(shouldRetransmit));
         }
-        
+
+        if (shouldRetransmit)
+        {
+            if (configManager.isAdminMode())
+            {
+                Serial.println("[DEBUG] Llamando perhapsRebroadcast()...");
+            }
+            if (perhapsRebroadcast(packet))
+            {
+                // ...
+            }
+            else
+            {
+                if (configManager.isAdminMode())
+                {
+                    Serial.println("[DEBUG] perhapsRebroadcast() devolvió false");
+                }
+            }
+        }
+        else
+        {
+            if (configManager.isAdminMode())
+            {
+                Serial.println("[DEBUG] Message type no válido para retransmisión");
+            }
+        }
+
         return true;
         
     } else {
