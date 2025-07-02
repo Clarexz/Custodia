@@ -3,7 +3,7 @@
 **Firmware personalizado basado en Meshtastic para tracking GPS off-grid**
 
 ![Estado del Proyecto](https://img.shields.io/badge/Estado-COMPLETAMENTE%20MODULARIZADO-brightgreen)
-![Versión](https://img.shields.io/badge/Versión-0.3-blue)
+![Versión](https://img.shields.io/badge/Versión-0.4-blue)
 ![Plataforma](https://img.shields.io/badge/Plataforma-ESP32--S3-orange)
 ![Framework](https://img.shields.io/badge/Framework-Arduino-teal)
 ![Algoritmo](https://img.shields.io/badge/Algoritmo-Meshtastic%20Completo-purple)
