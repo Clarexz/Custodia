@@ -7,9 +7,7 @@
 #include "roles/role_manager.h"
 #include "serial/serial_handler.h"
 #include "serial/remote_commands.h"
-
-// Pin del LED para indicadores visuales
-#define LED_PIN 21
+#include "user_logic.h"
 
 void setup() {
     // Inicializar comunicación serial

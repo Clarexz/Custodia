@@ -91,8 +91,7 @@ void ConfigManager::handleConfigDataMode(String value) {
     }
     else {
         Serial.println("[ERROR] Modo inválido. Use: SIMPLE o ADMIN");
-        Serial.println("[INFO] SIMPLE: Solo packet básico");
-        Serial.println("[INFO] ADMIN: Información completa de mesh");
+        Serial.println("[INFO] Modo actual: " + getCurrentDataModeString());
         return;
     }
 }
@@ -103,62 +102,250 @@ void ConfigManager::handleConfigRegion(String value) {
     if (value == "US") {
         config.region = REGION_US;
         Serial.println("[OK] Región configurada: US (Estados Unidos/México)");
-        Serial.println("[INFO] Frecuencia: " + String(FREQ_US_MHZ) + " MHz");
+        Serial.println("[INFO] Frecuencia: " + String(getFrequencyMHz()) + " MHz");
     }
     else if (value == "EU") {
         config.region = REGION_EU;
         Serial.println("[OK] Región configurada: EU (Europa)");
-        Serial.println("[INFO] Frecuencia: " + String(FREQ_EU_MHZ) + " MHz");
+        Serial.println("[INFO] Frecuencia: " + String(getFrequencyMHz()) + " MHz");
     }
     else if (value == "CH") {
         config.region = REGION_CH;
         Serial.println("[OK] Región configurada: CH (China)");
-        Serial.println("[INFO] Frecuencia: " + String(FREQ_CH_MHZ) + " MHz");
+        Serial.println("[INFO] Frecuencia: " + String(getFrequencyMHz()) + " MHz");
     }
     else if (value == "AS") {
         config.region = REGION_AS;
         Serial.println("[OK] Región configurada: AS (Asia)");
-        Serial.println("[INFO] Frecuencia: " + String(FREQ_AS_MHZ) + " MHz");
+        Serial.println("[INFO] Frecuencia: " + String(getFrequencyMHz()) + " MHz");
     }
     else if (value == "JP") {
         config.region = REGION_JP;
         Serial.println("[OK] Región configurada: JP (Japón)");
-        Serial.println("[INFO] Frecuencia: " + String(FREQ_JP_MHZ) + " MHz");
+        Serial.println("[INFO] Frecuencia: " + String(getFrequencyMHz()) + " MHz");
     }
     else {
         Serial.println("[ERROR] Región inválida. Use: US, EU, CH, AS, o JP");
-        Serial.println("[INFO] US: 915 MHz (Estados Unidos/México)");
-        Serial.println("[INFO] EU: 868 MHz (Europa)");
-        Serial.println("[INFO] CH: 470 MHz (China)");
-        Serial.println("[INFO] AS: 433 MHz (Asia)");
-        Serial.println("[INFO] JP: 920 MHz (Japón)");
+    }
+}
+
+// ========== NUEVOS MANEJADORES DE RADIO PROFILES ==========
+
+void ConfigManager::handleConfigRadioProfile(String value) {
+    value.trim();
+    value.toUpperCase();
+    
+    // Comando principal: CONFIG_RADIO_PROFILE <profile_name>
+    if (value == "DESERT_LONG_FAST" || value == "DESERT") {
+        config.radioProfile = PROFILE_DESERT_LONG_FAST;
+        if (radioProfileManager.applyProfile(PROFILE_DESERT_LONG_FAST)) {
+            Serial.println("[OK] Perfil configurado: DESERT_LONG_FAST");
+            Serial.println("[INFO] Optimizado para máximo alcance en terreno abierto");
+            Serial.println("[INFO] SF11, 250kHz, ~8km alcance, airtime ~2.2s");
+        }
+    }
+    else if (value == "MOUNTAIN_STABLE" || value == "MOUNTAIN") {
+        config.radioProfile = PROFILE_MOUNTAIN_STABLE;
+        if (radioProfileManager.applyProfile(PROFILE_MOUNTAIN_STABLE)) {
+            Serial.println("[OK] Perfil configurado: MOUNTAIN_STABLE");
+            Serial.println("[INFO] Optimizado para condiciones adversas y obstáculos");
+            Serial.println("[INFO] SF10, 125kHz, ~4km alcance, airtime ~0.9s");
+        }
+    }
+    else if (value == "URBAN_DENSE" || value == "URBAN") {
+        config.radioProfile = PROFILE_URBAN_DENSE;
+        if (radioProfileManager.applyProfile(PROFILE_URBAN_DENSE)) {
+            Serial.println("[OK] Perfil configurado: URBAN_DENSE");
+            Serial.println("[INFO] Optimizado para alta velocidad y testing");
+            Serial.println("[INFO] SF7, 500kHz, ~800m alcance, airtime ~80ms");
+        }
+    }
+    else if (value == "MESH_MAX_NODES" || value == "MESH") {
+        config.radioProfile = PROFILE_MESH_MAX_NODES;
+        if (radioProfileManager.applyProfile(PROFILE_MESH_MAX_NODES)) {
+            Serial.println("[OK] Perfil configurado: MESH_MAX_NODES");
+            Serial.println("[INFO] Balance optimizado para redes grandes (20-30 nodos)");
+            Serial.println("[INFO] SF9, 250kHz, ~2.5km alcance, airtime ~320ms");
+        }
+    }
+    else if (value == "CUSTOM_ADVANCED" || value == "CUSTOM") {
+        config.radioProfile = PROFILE_CUSTOM_ADVANCED;
+        if (radioProfileManager.applyProfile(PROFILE_CUSTOM_ADVANCED)) {
+            Serial.println("[OK] Perfil configurado: CUSTOM_ADVANCED");
+            Serial.println("[INFO] Configuración manual activa");
+            Serial.println("[INFO] Use RADIO_PROFILE_CUSTOM <param> <value> para configurar");
+            Serial.println("[INFO] Parámetros: SF, BW, CR, POWER, PREAMBLE");
+        }
+    }
+    else if (value == "LIST") {
+        radioProfileManager.printAllProfiles();
+    }
+    else if (value.startsWith("INFO ")) {
+        String profileName = value.substring(5);
+        profileName.trim();
+        profileName.toUpperCase();
+        
+        RadioProfile profile;
+        bool valid = true;
+        
+        if (profileName == "DESERT_LONG_FAST" || profileName == "DESERT") {
+            profile = PROFILE_DESERT_LONG_FAST;
+        }
+        else if (profileName == "MOUNTAIN_STABLE" || profileName == "MOUNTAIN") {
+            profile = PROFILE_MOUNTAIN_STABLE;
+        }
+        else if (profileName == "URBAN_DENSE" || profileName == "URBAN") {
+            profile = PROFILE_URBAN_DENSE;
+        }
+        else if (profileName == "MESH_MAX_NODES" || profileName == "MESH") {
+            profile = PROFILE_MESH_MAX_NODES;
+        }
+        else if (profileName == "CUSTOM_ADVANCED" || profileName == "CUSTOM") {
+            profile = PROFILE_CUSTOM_ADVANCED;
+        }
+        else {
+            Serial.println("[ERROR] Perfil desconocido: " + profileName);
+            valid = false;
+        }
+        
+        if (valid) {
+            radioProfileManager.printProfileInfo(profile);
+        }
+    }
+    else if (value == "COMPARE") {
+        radioProfileManager.printProfileComparison();
+    }
+    else {
+        Serial.println("[ERROR] Perfil inválido: " + value);
+        Serial.println("[INFO] Perfiles disponibles:");
+        Serial.println("  DESERT_LONG_FAST   - Máximo alcance campo abierto");
+        Serial.println("  MOUNTAIN_STABLE    - Condiciones adversas");
+        Serial.println("  URBAN_DENSE        - Alta velocidad urbana");
+        Serial.println("  MESH_MAX_NODES     - Balance redes grandes");
+        Serial.println("  CUSTOM_ADVANCED    - Configuración manual");
+        Serial.println("[INFO] Comandos: LIST, INFO <perfil>, COMPARE");
+    }
+}
+
+void ConfigManager::handleRadioProfileCustom(String param, String value) {
+    if (config.radioProfile != PROFILE_CUSTOM_ADVANCED) {
+        Serial.println("[ERROR] Comando solo disponible con perfil CUSTOM_ADVANCED");
+        Serial.println("[INFO] Use: CONFIG_RADIO_PROFILE CUSTOM_ADVANCED primero");
         return;
     }
     
-    Serial.println("[WARNING] Reinicie el dispositivo después de CONFIG_SAVE para aplicar nueva frecuencia");
+    param.trim();
+    param.toUpperCase();
+    float numValue = value.toFloat();
+    
+    bool valid = false;
+    
+    if (param == "SF") {
+        if (numValue >= 7 && numValue <= 12) {
+            radioProfileManager.setCustomParameter("SF", numValue);
+            Serial.println("[OK] Spreading Factor configurado: SF" + String((int)numValue));
+            valid = true;
+        } else {
+            Serial.println("[ERROR] SF debe estar entre 7 y 12");
+        }
+    }
+    else if (param == "BW") {
+        if (numValue == 125.0 || numValue == 250.0 || numValue == 500.0) {
+            radioProfileManager.setCustomParameter("BW", numValue);
+            Serial.println("[OK] Bandwidth configurado: " + String(numValue) + " kHz");
+            valid = true;
+        } else {
+            Serial.println("[ERROR] BW debe ser 125, 250 o 500 kHz");
+        }
+    }
+    else if (param == "CR") {
+        if (numValue >= 5 && numValue <= 8) {
+            radioProfileManager.setCustomParameter("CR", numValue);
+            Serial.println("[OK] Coding Rate configurado: 4/" + String((int)numValue));
+            valid = true;
+        } else {
+            Serial.println("[ERROR] CR debe estar entre 5 y 8 (para 4/5 a 4/8)");
+        }
+    }
+    else if (param == "POWER") {
+        if (numValue >= 2 && numValue <= 20) {
+            radioProfileManager.setCustomParameter("POWER", numValue);
+            Serial.println("[OK] TX Power configurado: " + String((int)numValue) + " dBm");
+            valid = true;
+        } else {
+            Serial.println("[ERROR] POWER debe estar entre 2 y 20 dBm");
+        }
+    }
+    else if (param == "PREAMBLE") {
+        if (numValue >= 6 && numValue <= 65535) {
+            radioProfileManager.setCustomParameter("PREAMBLE", numValue);
+            Serial.println("[OK] Preamble configurado: " + String((int)numValue) + " símbolos");
+            valid = true;
+        } else {
+            Serial.println("[ERROR] PREAMBLE debe estar entre 6 y 65535");
+        }
+    }
+    else {
+        Serial.println("[ERROR] Parámetro desconocido: " + param);
+        Serial.println("[INFO] Parámetros válidos: SF, BW, CR, POWER, PREAMBLE");
+        return;
+    }
+    
+    if (valid) {
+        Serial.println("[INFO] Use RADIO_PROFILE_APPLY para aplicar cambios");
+    }
 }
+
+void ConfigManager::handleRadioProfileApply() {
+    if (config.radioProfile == PROFILE_CUSTOM_ADVANCED) {
+        if (radioProfileManager.applyProfile(PROFILE_CUSTOM_ADVANCED)) {
+            Serial.println("[OK] Configuración custom aplicada al hardware LoRa");
+            if (isAdminMode()) {
+                radioProfileManager.printProfileInfo(PROFILE_CUSTOM_ADVANCED);
+            }
+        } else {
+            Serial.println("[ERROR] Error al aplicar configuración custom");
+        }
+    } else {
+        Serial.println("[ERROR] Comando solo disponible en modo CUSTOM_ADVANCED");
+        Serial.println("[INFO] Perfil actual: " + getRadioProfileName());
+    }
+}
+
+void ConfigManager::handleRadioProfileStatus() {
+    Serial.println("\n=== STATUS RADIO PROFILE ===");
+    Serial.println("Perfil actual: " + getRadioProfileName());
+    
+    if (isAdminMode()) {
+        radioProfileManager.printProfileInfo(config.radioProfile);
+    } else {
+        RadioProfileConfig profileConfig = radioProfileManager.getProfileConfig(config.radioProfile);
+        Serial.println("Alcance estimado: ~" + String(profileConfig.approxRange) + " metros");
+        Serial.println("Airtime (44 bytes): " + String(profileConfig.airtimeMs) + " ms");
+        Serial.println("Rating batería: " + String(profileConfig.batteryRating) + "/10");
+        Serial.println("Rating velocidad: " + String(profileConfig.speedRating) + "/10");
+    }
+    Serial.println("============================");
+}
+
+// =========================================================
 
 void ConfigManager::handleModeChange(String value) {
     value.trim();
     
     if (value == "SIMPLE") {
-        config.dataMode = DATA_MODE_SIMPLE;
-        Serial.println("[OK] Modo cambiado a: SIMPLE");
-        Serial.println("[INFO] Mostrando solo packets básicos");
-        // Auto-guardar cambio
-        preferences.putUChar("dataMode", config.dataMode);
+        setDataMode(DATA_MODE_SIMPLE);
+        Serial.println("[OK] Cambiado a modo SIMPLE");
+        Serial.println("[INFO] Mostrando solo datos básicos de packets");
     }
     else if (value == "ADMIN") {
-        config.dataMode = DATA_MODE_ADMIN;
-        Serial.println("[OK] Modo cambiado a: ADMIN");
-        Serial.println("[INFO] Mostrando información completa");
-        // Auto-guardar cambio
-        preferences.putUChar("dataMode", config.dataMode);
+        setDataMode(DATA_MODE_ADMIN);
+        Serial.println("[OK] Cambiado a modo ADMIN");
+        Serial.println("[INFO] Mostrando información completa de mesh");
     }
     else {
-        Serial.println("[ERROR] Modo inválido. Use: MODE SIMPLE o MODE ADMIN");
+        Serial.println("[ERROR] Modo inválido. Use: SIMPLE o ADMIN");
         Serial.println("[INFO] Modo actual: " + getCurrentDataModeString());
-        return;
     }
 }
 
@@ -224,27 +411,34 @@ void ConfigManager::handleHelp() {
     Serial.println("CONFIG_MAX_HOPS <1-10>                   - Máximo saltos en mesh");
     Serial.println("CONFIG_DATA_MODE <SIMPLE|ADMIN>          - Modo de visualización de datos");
     Serial.println("CONFIG_REGION <US|EU|CH|AS|JP>           - Región LoRa (frecuencia)");
+    Serial.println("");
+    Serial.println("=== RADIO PROFILES ===");
+    Serial.println("CONFIG_RADIO_PROFILE <perfil>            - Configurar perfil LoRa");
+    Serial.println("CONFIG_RADIO_PROFILE LIST                - Listar perfiles disponibles");
+    Serial.println("CONFIG_RADIO_PROFILE INFO <perfil>       - Información detallada");
+    Serial.println("CONFIG_RADIO_PROFILE COMPARE             - Comparar todos los perfiles");
+    Serial.println("RADIO_PROFILE_CUSTOM <param> <value>     - Configurar parámetro custom");
+    Serial.println("RADIO_PROFILE_APPLY                      - Aplicar configuración custom");
+    Serial.println("RADIO_PROFILE_STATUS                     - Mostrar perfil actual");
+    Serial.println("");
+    Serial.println("=== PERFILES DISPONIBLES ===");
+    Serial.println("DESERT_LONG_FAST     - Máximo alcance (8km, 2.2s, batería 3/10)");
+    Serial.println("MOUNTAIN_STABLE      - Condiciones adversas (4km, 0.9s, batería 5/10)");
+    Serial.println("URBAN_DENSE          - Alta velocidad (800m, 80ms, batería 8/10)");
+    Serial.println("MESH_MAX_NODES       - Balance redes grandes (2.5km, 320ms, batería 7/10)");
+    Serial.println("CUSTOM_ADVANCED      - Configuración manual experta");
+    Serial.println("");
+    Serial.println("=== PARÁMETROS CUSTOM ===");
+    Serial.println("SF (7-12), BW (125/250/500), CR (5-8), POWER (2-20), PREAMBLE (6-65535)");
+    Serial.println("Ejemplo: RADIO_PROFILE_CUSTOM SF 10");
+    Serial.println("");
+    Serial.println("=== COMANDOS DE GESTIÓN ===");
     Serial.println("CONFIG_SAVE                              - Guardar configuración");
     Serial.println("CONFIG_RESET                             - Resetear configuración");
     Serial.println("INFO                                     - Información del dispositivo");
-    Serial.println("STATUS                                   - Estado actual del sistema");
+    Serial.println("STATUS                                   - Estado del sistema");
     Serial.println("START                                    - Iniciar modo operativo");
     Serial.println("HELP                                     - Mostrar esta ayuda");
-    Serial.println("");
-    Serial.println("=== COMANDOS DURANTE OPERACIÓN ===");
-    Serial.println("MODE SIMPLE                              - Cambiar a vista simple");
-    Serial.println("MODE ADMIN                               - Cambiar a vista completa");
-    Serial.println("");
-    Serial.println("=== REGIONES LORA ===");
-    Serial.println("US: 915 MHz (Estados Unidos/México)");
-    Serial.println("EU: 868 MHz (Europa)");
-    Serial.println("CH: 470 MHz (China)");
-    Serial.println("AS: 433 MHz (Asia)");
-    Serial.println("JP: 920 MHz (Japón)");
-    Serial.println("");
-    Serial.println("=== MODOS DE DATOS ===");
-    Serial.println("SIMPLE: Solo packet [deviceID, lat, lon, battery, timestamp]");
-    Serial.println("ADMIN:  Información completa de mesh y estadísticas");
     Serial.println("============================");
 }
 
@@ -257,17 +451,18 @@ String ConfigManager::getRoleString(DeviceRole role) {
         case ROLE_TRACKER: return "TRACKER";
         case ROLE_REPEATER: return "REPEATER";
         case ROLE_RECEIVER: return "RECEIVER";
-        default: return "NO CONFIGURADO";
+        case ROLE_NONE: return "NONE";
+        default: return "UNKNOWN";
     }
 }
 
 String ConfigManager::getStateString(SystemState state) {
     switch (state) {
-        case STATE_BOOT: return "INICIANDO";
-        case STATE_CONFIG_MODE: return "MODO CONFIGURACIÓN";
-        case STATE_RUNNING: return "OPERATIVO";
-        case STATE_SLEEP: return "SUSPENDIDO";
-        default: return "DESCONOCIDO";
+        case STATE_BOOT: return "BOOT";
+        case STATE_CONFIG_MODE: return "CONFIG_MODE";
+        case STATE_RUNNING: return "RUNNING";
+        case STATE_SLEEP: return "SLEEP";
+        default: return "UNKNOWN";
     }
 }
 
@@ -275,7 +470,7 @@ String ConfigManager::getDataModeString(DataDisplayMode mode) {
     switch (mode) {
         case DATA_MODE_SIMPLE: return "SIMPLE";
         case DATA_MODE_ADMIN: return "ADMIN";
-        default: return "DESCONOCIDO";
+        default: return "UNKNOWN";
     }
 }
 
@@ -286,6 +481,6 @@ String ConfigManager::getRegionString(LoRaRegion region) {
         case REGION_CH: return "CH";
         case REGION_AS: return "AS";
         case REGION_JP: return "JP";
-        default: return "DESCONOCIDO";
+        default: return "UNKNOWN";
     }
 }

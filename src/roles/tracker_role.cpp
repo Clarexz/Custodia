@@ -8,9 +8,7 @@
 #include "../lora.h"
 #include "../display/display_manager.h"
 #include "../battery/battery_manager.h"
-
-// Pin del LED para indicadores visuales
-#define LED_PIN 21
+#include "user_logic.h"
 
 // Instancia global
 TrackerRole trackerRole;

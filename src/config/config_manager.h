@@ -1,7 +1,8 @@
 /*
- * CONFIG_MANAGER.H - Sistema de Configuración Modular (VERSIÓN COMPLETAMENTE CORREGIDA)
+ * CONFIG_MANAGER.H - Sistema de Configuración Modular
  * 
- * PROBLEMA RESUELTO: Declaración completa de la clase ConfigManager
+ * MODULARIZADO: Separación entre core y comandos
+ * Declaraciones centralizadas para todo el sistema de configuración
  */
 
 #ifndef CONFIG_MANAGER_H
@@ -9,9 +10,10 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include "../radio/radio_profiles.h"  // NUEVO: Para Radio Profiles
 
 /*
- * ENUMERACIONES LOCALES - SIN DEPENDENCIA CIRCULAR
+ * ENUMERACIONES LOCALES
  */
 
 // Roles disponibles para cada dispositivo en la red mesh
@@ -66,6 +68,7 @@ struct DeviceConfig {
     uint8_t maxHops;         // Máximo número de saltos en mesh (1-10)
     DataDisplayMode dataMode; // Modo de visualización de datos
     LoRaRegion region;       // Región LoRa para frecuencia
+    RadioProfile radioProfile; // NUEVO: Perfil LoRa actual
     bool configValid;        // Flag que indica si la configuración es válida
     char version[8];         // Versión del firmware para compatibilidad
 };
@@ -121,6 +124,11 @@ public:
     void setDataMode(DataDisplayMode mode);
     String getCurrentDataModeString();
     
+    // NUEVOS: Radio Profiles getters/setters
+    RadioProfile getRadioProfile() { return config.radioProfile; }
+    void setRadioProfile(RadioProfile profile) { config.radioProfile = profile; }
+    String getRadioProfileName();
+    
     /*
      * MÉTODOS UTILITARIOS
      */
@@ -141,6 +149,12 @@ public:
     void handleInfo();
     void handleStatus();
     void handleHelp();
+    
+    // NUEVOS: Radio Profiles handlers
+    void handleConfigRadioProfile(String value);
+    void handleRadioProfileCustom(String param, String value);
+    void handleRadioProfileApply();
+    void handleRadioProfileStatus();
     
     /*
      * MÉTODOS UTILITARIOS DE STRINGS

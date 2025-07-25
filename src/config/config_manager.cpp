@@ -7,7 +7,6 @@
 
 #include "config_manager.h"
 #include "config_commands.h"
-#include <WiFi.h>
 
 /*
  * DEFINICIONES Y CONSTANTES
@@ -56,6 +55,13 @@ void ConfigManager::begin() {
     } else {
         Serial.println("[INFO] Configuración válida encontrada.");
         printConfig();
+        
+        // NUEVO: Aplicar perfil LoRa cargado
+        if (config.radioProfile >= PROFILE_DESERT_LONG_FAST && config.radioProfile <= PROFILE_CUSTOM_ADVANCED) {
+            radioProfileManager.applyProfile(config.radioProfile);
+            Serial.println("[INFO] Perfil LoRa aplicado: " + getRadioProfileName());
+        }
+        
         Serial.println("[INFO] Iniciando en modo operativo en 5 segundos...");
         Serial.println("[INFO] Envie cualquier comando para entrar en modo configuración.");
         
@@ -119,6 +125,31 @@ void ConfigManager::processSerialInput() {
     else if (input.startsWith("CONFIG_REGION ")) {
         handleConfigRegion(input.substring(14));
     }
+    
+    // ========== NUEVOS COMANDOS DE RADIO PROFILES ==========
+    else if (input.startsWith("CONFIG_RADIO_PROFILE ")) {
+        handleConfigRadioProfile(input.substring(21));
+    }
+    else if (input.startsWith("RADIO_PROFILE_CUSTOM ")) {
+        String params = input.substring(21);
+        int spaceIndex = params.indexOf(' ');
+        if (spaceIndex > 0) {
+            String param = params.substring(0, spaceIndex);
+            String value = params.substring(spaceIndex + 1);
+            handleRadioProfileCustom(param, value);
+        } else {
+            Serial.println("[ERROR] Formato: RADIO_PROFILE_CUSTOM <param> <value>");
+            Serial.println("[INFO] Parámetros: SF, BW, CR, POWER, PREAMBLE");
+        }
+    }
+    else if (input == "RADIO_PROFILE_APPLY") {
+        handleRadioProfileApply();
+    }
+    else if (input == "RADIO_PROFILE_STATUS") {
+        handleRadioProfileStatus();
+    }
+    // ======================================================
+    
     else if (input.startsWith("MODE ")) {
         handleModeChange(input.substring(5));
     }
@@ -167,6 +198,9 @@ void ConfigManager::loadConfig() {
     config.region = (LoRaRegion)preferences.getUChar("region", REGION_US);
     config.configValid = preferences.getBool("configValid", false);
     
+    // NUEVO: Cargar Radio Profile
+    config.radioProfile = (RadioProfile)preferences.getUChar("radioProfile", PROFILE_MESH_MAX_NODES);
+    
     // Establecer versión del firmware actual
     strncpy(config.version, FIRMWARE_VERSION, sizeof(config.version) - 1);
     config.version[sizeof(config.version) - 1] = '\0';
@@ -189,6 +223,9 @@ void ConfigManager::saveConfig() {
     preferences.putUChar("dataMode", config.dataMode);
     preferences.putUChar("region", config.region);
     preferences.putBool("configValid", config.configValid);
+    
+    // NUEVO: Guardar Radio Profile
+    preferences.putUChar("radioProfile", config.radioProfile);
     
     Serial.println("[OK] Configuración guardada exitosamente.");
 }
@@ -225,6 +262,14 @@ String ConfigManager::getCurrentDataModeString() {
     return getDataModeString(config.dataMode);
 }
 
+// ========== NUEVOS MÉTODOS PARA RADIO PROFILES ==========
+
+String ConfigManager::getRadioProfileName() {
+    return radioProfileManager.getProfileName(config.radioProfile);
+}
+
+// ========================================================
+
 /*
  * MÉTODOS UTILITARIOS PRIVADOS
  */
@@ -237,6 +282,10 @@ void ConfigManager::printConfig() {
     Serial.println("Máximo saltos: " + String(config.maxHops));
     Serial.println("Modo de datos: " + getDataModeString(config.dataMode));
     Serial.println("Región LoRa: " + getRegionString(config.region) + " (" + String(getFrequencyMHz()) + " MHz)");
+    
+    // NUEVO: Mostrar Radio Profile
+    Serial.println("Perfil LoRa: " + getRadioProfileName());
+    
     Serial.println("============================");
 }
 
@@ -259,6 +308,10 @@ void ConfigManager::setDefaultConfig() {
     config.dataMode = DATA_MODE_ADMIN;
     config.region = REGION_US;
     config.configValid = false;
+    
+    // NUEVO: Radio Profile por defecto
+    config.radioProfile = PROFILE_MESH_MAX_NODES;
+    
     strncpy(config.version, FIRMWARE_VERSION, sizeof(config.version) - 1);
     config.version[sizeof(config.version) - 1] = '\0';
 }
