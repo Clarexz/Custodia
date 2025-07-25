@@ -107,6 +107,7 @@ public:
     void processSerialInput();
     void saveConfig();
     void loadConfig();
+    void handleQuickConfig(String params);
     
     /*
      * GETTERS Y SETTERS

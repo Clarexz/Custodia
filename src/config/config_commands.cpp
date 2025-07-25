@@ -442,6 +442,218 @@ void ConfigManager::handleHelp() {
     Serial.println("============================");
 }
 
+void ConfigManager::handleQuickConfig(String params) {
+    params.trim();
+    
+    if (params.length() == 0) {
+        Serial.println("[ERROR] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS]");
+        Serial.println("[INFO] Ejemplo: Q_CONFIG TRACKER,001,15,US,SIMPLE,MESH_MAX_NODES");
+        Serial.println("[INFO] Ejemplo con hops: Q_CONFIG TRACKER,001,15,US,SIMPLE,DESERT_LONG_FAST,5");
+        return;
+    }
+    
+    // Dividir parámetros por comas
+    String parameters[7]; // Máximo 7 parámetros
+    int paramCount = 0;
+    int startIndex = 0;
+    
+    // Parser manual por comas
+    for (int i = 0; i <= params.length(); i++) {
+        if (i == params.length() || params.charAt(i) == ',') {
+            if (paramCount < 7) {
+                parameters[paramCount] = params.substring(startIndex, i);
+                parameters[paramCount].trim();
+                paramCount++;
+            }
+            startIndex = i + 1;
+        }
+    }
+    
+    // Validar número mínimo de parámetros
+    if (paramCount < 6) {
+        Serial.println("[ERROR] Faltan parámetros obligatorios");
+        Serial.println("[INFO] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS]");
+        Serial.println("[INFO] Parámetros recibidos: " + String(paramCount) + "/6 mínimos");
+        return;
+    }
+    
+    Serial.println("[Q_CONFIG] Iniciando configuración rápida...");
+    
+    // Variables para validar configuración completa
+    bool allValid = true;
+    
+    // 1. CONFIGURAR ROL (parámetro 0)
+    String role = parameters[0];
+    role.toUpperCase();
+    
+    if (role == "TRACKER") {
+        config.role = ROLE_TRACKER;
+        Serial.println("[Q_CONFIG] ✓ Rol: TRACKER");
+    }
+    else if (role == "REPEATER") {
+        config.role = ROLE_REPEATER;
+        Serial.println("[Q_CONFIG] ✓ Rol: REPEATER");
+    }
+    else if (role == "RECEIVER") {
+        config.role = ROLE_RECEIVER;
+        Serial.println("[Q_CONFIG] ✓ Rol: RECEIVER");
+    }
+    else {
+        Serial.println("[Q_CONFIG] ✗ Rol inválido: " + role + " (use: TRACKER, REPEATER, RECEIVER)");
+        allValid = false;
+    }
+    
+    // 2. CONFIGURAR DEVICE ID (parámetro 1)
+    int deviceId = parameters[1].toInt();
+    
+    if (deviceId >= 1 && deviceId <= 999) {
+        config.deviceID = deviceId;
+        Serial.println("[Q_CONFIG] ✓ Device ID: " + String(deviceId));
+    } else {
+        Serial.println("[Q_CONFIG] ✗ Device ID inválido: " + parameters[1] + " (use: 1-999)");
+        allValid = false;
+    }
+    
+    // 3. CONFIGURAR GPS INTERVAL (parámetro 2)
+    int gpsInterval = parameters[2].toInt();
+    
+    if (gpsInterval >= 5 && gpsInterval <= 3600) {
+        config.gpsInterval = gpsInterval;
+        Serial.println("[Q_CONFIG] ✓ GPS Interval: " + String(gpsInterval) + " segundos");
+    } else {
+        Serial.println("[Q_CONFIG] ✗ GPS Interval inválido: " + parameters[2] + " (use: 5-3600)");
+        allValid = false;
+    }
+    
+    // 4. CONFIGURAR REGIÓN (parámetro 3)
+    String region = parameters[3];
+    region.toUpperCase();
+    
+    if (region == "US") {
+        config.region = REGION_US;
+        Serial.println("[Q_CONFIG] ✓ Región: US (915 MHz)");
+    }
+    else if (region == "EU") {
+        config.region = REGION_EU;
+        Serial.println("[Q_CONFIG] ✓ Región: EU (868 MHz)");
+    }
+    else if (region == "CH") {
+        config.region = REGION_CH;
+        Serial.println("[Q_CONFIG] ✓ Región: CH (470 MHz)");
+    }
+    else if (region == "AS") {
+        config.region = REGION_AS;
+        Serial.println("[Q_CONFIG] ✓ Región: AS (433 MHz)");
+    }
+    else if (region == "JP") {
+        config.region = REGION_JP;
+        Serial.println("[Q_CONFIG] ✓ Región: JP (920 MHz)");
+    }
+    else {
+        Serial.println("[Q_CONFIG] ✗ Región inválida: " + region + " (use: US, EU, CH, AS, JP)");
+        allValid = false;
+    }
+    
+    // 5. CONFIGURAR DATA MODE (parámetro 4)
+    String dataMode = parameters[4];
+    dataMode.toUpperCase();
+    
+    if (dataMode == "SIMPLE") {
+        config.dataMode = DATA_MODE_SIMPLE;
+        Serial.println("[Q_CONFIG] ✓ Modo datos: SIMPLE");
+    }
+    else if (dataMode == "ADMIN") {
+        config.dataMode = DATA_MODE_ADMIN;
+        Serial.println("[Q_CONFIG] ✓ Modo datos: ADMIN");
+    }
+    else {
+        Serial.println("[Q_CONFIG] ✗ Modo datos inválido: " + dataMode + " (use: SIMPLE, ADMIN)");
+        allValid = false;
+    }
+    
+    // 6. CONFIGURAR RADIO PROFILE (parámetro 5 - OBLIGATORIO)
+    String radioProfile = parameters[5];
+    radioProfile.toUpperCase();
+    
+    if (radioProfile == "DESERT_LONG_FAST" || radioProfile == "DESERT") {
+        config.radioProfile = PROFILE_DESERT_LONG_FAST;
+        Serial.println("[Q_CONFIG] ✓ Radio Profile: DESERT_LONG_FAST");
+    }
+    else if (radioProfile == "MOUNTAIN_STABLE" || radioProfile == "MOUNTAIN") {
+        config.radioProfile = PROFILE_MOUNTAIN_STABLE;
+        Serial.println("[Q_CONFIG] ✓ Radio Profile: MOUNTAIN_STABLE");
+    }
+    else if (radioProfile == "URBAN_DENSE" || radioProfile == "URBAN") {
+        config.radioProfile = PROFILE_URBAN_DENSE;
+        Serial.println("[Q_CONFIG] ✓ Radio Profile: URBAN_DENSE");
+    }
+    else if (radioProfile == "MESH_MAX_NODES" || radioProfile == "MESH") {
+        config.radioProfile = PROFILE_MESH_MAX_NODES;
+        Serial.println("[Q_CONFIG] ✓ Radio Profile: MESH_MAX_NODES");
+    }
+    else if (radioProfile == "CUSTOM_ADVANCED" || radioProfile == "CUSTOM") {
+        config.radioProfile = PROFILE_CUSTOM_ADVANCED;
+        Serial.println("[Q_CONFIG] ✓ Radio Profile: CUSTOM_ADVANCED");
+    }
+    else {
+        Serial.println("[Q_CONFIG] ✗ Radio Profile inválido: " + radioProfile);
+        Serial.println("[Q_CONFIG]   Opciones: DESERT_LONG_FAST, MOUNTAIN_STABLE, URBAN_DENSE, MESH_MAX_NODES, CUSTOM_ADVANCED");
+        allValid = false;
+    }
+    
+    // 7. CONFIGURAR MAX HOPS (parámetro 6 - OPCIONAL)
+    if (paramCount >= 7) {
+        int maxHops = parameters[6].toInt();
+        
+        if (maxHops >= 1 && maxHops <= 10) {
+            config.maxHops = maxHops;
+            Serial.println("[Q_CONFIG] ✓ Max hops: " + String(maxHops));
+        } else {
+            Serial.println("[Q_CONFIG] ✗ Max hops inválido: " + parameters[6] + " (use: 1-10)");
+            allValid = false;
+        }
+    } else {
+        // Usar valor por defecto
+        config.maxHops = 3;
+        Serial.println("[Q_CONFIG] ✓ Max hops: 3 (por defecto)");
+    }
+    
+    // VALIDACIÓN FINAL Y GUARDADO
+    if (allValid) {
+        // Marcar configuración como válida
+        config.configValid = true;
+        
+        // Aplicar perfil LoRa inmediatamente
+        if (radioProfileManager.applyProfile(config.radioProfile)) {
+            Serial.println("[Q_CONFIG] ✓ Perfil LoRa aplicado al hardware");
+        } else {
+            Serial.println("[Q_CONFIG] ⚠ Warning: Error aplicando perfil LoRa");
+        }
+        
+        // Guardar automáticamente
+        saveConfig();
+        
+        Serial.println("[Q_CONFIG] ========================================");
+        Serial.println("[Q_CONFIG] CONFIGURACIÓN COMPLETADA EXITOSAMENTE");
+        Serial.println("[Q_CONFIG] ========================================");
+        
+        // Mostrar resumen
+        printConfig();
+        
+        // Iniciar automáticamente
+        Serial.println("[Q_CONFIG] Iniciando modo operativo automáticamente...");
+        currentState = STATE_RUNNING;
+        Serial.println("[Q_CONFIG] Sistema listo y operando");
+        
+    } else {
+        Serial.println("[Q_CONFIG] ========================================");
+        Serial.println("[Q_CONFIG] CONFIGURACIÓN FALLÓ");
+        Serial.println("[Q_CONFIG] ========================================");
+        Serial.println("[Q_CONFIG] Corrija los errores e intente nuevamente");
+        Serial.println("[Q_CONFIG] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS]");
+    }
+}
+
 /*
  * MÉTODOS UTILITARIOS DE STRINGS
  */
