@@ -22,9 +22,9 @@
 #define MESH_TX_PIN             3           // Connected to Meshtastic RX
 
 // LED Matrix MAX7219
-#define LED_MATRIX_DATA_PIN     4           // SPI Data
+#define LED_MATRIX_DATA_PIN     4           // Data line
 #define LED_MATRIX_CS_PIN       5           // Chip Select
-#define LED_MATRIX_CLK_PIN      6           // SPI Clock
+#define LED_MATRIX_CLK_PIN      6           // Clock line
 
 // LoRa SX1262 Module
 #define LORA_SCK_PIN            7           // SPI Clock

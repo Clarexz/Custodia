@@ -168,6 +168,9 @@ void ConfigManager::processSerialInput() {
     else if (input == "HELP") {
         handleHelp();
     }
+    else if (input.startsWith("Q_CONFIG ")) {
+    handleQuickConfig(input.substring(9));
+    }
     else if (input == "START") {
         if (config.configValid) {
             currentState = STATE_RUNNING;
