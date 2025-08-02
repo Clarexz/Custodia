@@ -20,7 +20,7 @@ Off-grid GPS tracking system based on complete Meshtastic algorithm, evolved int
 - **Automated tools** for cross-platform flashing and configuration
 - **Unified GPIO template** for managing all peripherals
 - **Radio profiles** optimized for different environments
-- **Mesh security** with device authentication
+- **Mesh security** with device authentication and encrypted channels
 - **Complete remote configuration** between devices
 - **Multi-region support** LoRa (US/EU/CH/AS/JP)
 
@@ -65,12 +65,12 @@ Off-grid GPS tracking system based on complete Meshtastic algorithm, evolved int
 
 **Windows:**
 ```bash
-python flash_tool_simple.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST
+python flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST -channel CAMELLOS_NORTE
 ```
 
 **Mac/Linux:**
 ```bash
-python3 flash_tool_simple.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST
+python3 flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST -channel CAMELLOS_NORTE
 ```
 
 **The tool automatically executes:**
@@ -79,7 +79,8 @@ python3 flash_tool_simple.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE
 3. Firmware compilation
 4. Device flashing
 5. Configuration of all parameters
-6. Start of operational mode
+6. **Network channel creation** (if specified)
+7. Start of operational mode
 
 ### Configuration Parameters
 
@@ -91,7 +92,26 @@ python3 flash_tool_simple.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE
 -mode <SIMPLE|ADMIN>                                 # Visualization mode
 -radio <PROFILE>                                     # Optimized radio profile
 -hops <1-10>                                         # Maximum mesh hops
+-channel <CHANNEL_NAME>                              # Private network channel (optional)
 ```
+
+### Network Security Examples
+
+**Public network (default):**
+```bash
+python3 flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST
+```
+
+**Private encrypted network:**
+```bash
+python3 flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST -channel CAMELLOS_NORTE
+```
+
+**Benefits of private channels:**
+- **Complete isolation** from other mesh networks
+- **Automatic encryption** of all communications
+- **Network segregation** (e.g., "CAMELLOS_NORTE" vs "LIEBRES_SUR")
+- **Persistent configuration** across device reboots
 
 ### Manual Configuration
 
@@ -179,6 +199,16 @@ INFO                                        # Device information
 HELP                                        # Command list
 ```
 
+### Network Security Commands
+
+```bash
+NETWORK_CREATE <CHANNEL_NAME>               # Create private channel
+NETWORK_JOIN <CHANNEL_NAME>                 # Join existing channel
+NETWORK_LIST                                # List available channels
+NETWORK_DELETE <CHANNEL_NAME>               # Delete channel
+NETWORK_STATUS                              # Show active channel
+```
+
 ### Commands During Operation
 
 ```bash
@@ -246,6 +276,47 @@ RADIO_PROFILE_STATUS                    # Show current configuration
 
 ---
 
+## Network Security
+
+### Private Mesh Networks
+
+The system supports **completely isolated private networks** using encrypted channels:
+
+**Key features:**
+- **AES-256-CTR encryption** for all communications
+- **Channel-based isolation** - devices on different channels cannot communicate
+- **Persistent configuration** - channels survive device reboots
+- **Automatic key management** - no manual PSK handling required
+
+### Channel Management
+
+**Create a private network:**
+```bash
+NETWORK_CREATE CAMELLOS_NORTE
+[OK] Canal 'CAMELLOS_NORTE' creado exitosamente
+[INFO] Canal guardado automáticamente en EEPROM
+```
+
+**Join an existing network:**
+```bash
+NETWORK_JOIN CAMELLOS_NORTE
+[OK] Conectado al canal: CAMELLOS_NORTE
+```
+
+**List available channels:**
+```bash
+NETWORK_LIST
+Canal 0: CAMELLOS_NORTE (ACTIVO)
+Canal 1: LIEBRES_SUR
+```
+
+**Network isolation example:**
+- Devices on channel "CAMELLOS_NORTE" can only communicate with other devices on the same channel
+- Devices on channel "LIEBRES_SUR" form a completely separate mesh network
+- Packets are automatically encrypted and filtered by channel
+
+---
+
 ## LoRa Regions
 
 | Region | Code | Frequency | Countries/Zones |
@@ -282,6 +353,7 @@ Role: TRACKER (CLIENT priority)
 Region: US (United States/Mexico)
 Frequency: 915.0 MHz
 Radio Profile: DESERT_LONG_FAST
+Network Channel: CAMELLOS_NORTE (ENCRYPTED)
 Coordinates: 25.302677,-98.277664
 Battery: 4100 mV
 Timestamp: 1718661234
@@ -391,18 +463,17 @@ struct LoRaStats {
 **Error: "Command not recognized"**
 ```bash
 # Verifications:
-1. Use automated tool for Q_CONFIG
+1. Use automated tool for configuration
 2. Correct command syntax
 3. Device in configuration mode
 ```
 
-**Error: "GPIO pin conflict"**
+**Error: "Channel creation failed"**
 ```bash
 # Solutions:
-1. Review user_logic.h for available pins
-2. Verify peripheral assignments
-3. Don't use system reserved pins
-4. Consult GPIO documentation
+1. Verify channel name is valid (no spaces, special characters)
+2. Check if channel already exists with NETWORK_LIST
+3. Ensure device has sufficient memory for new channels
 ```
 
 ### Network Issues
@@ -411,17 +482,18 @@ struct LoRaStats {
 ```bash
 # Verifications:
 1. Same LoRa region on all devices
-2. Devices within LoRa range
-3. Verify compatible radio profiles
+2. Same network channel on all devices
+3. Devices within LoRa range
+4. Verify compatible radio profiles
 ```
 
-**Error: "Remote configuration fails"**
+**Error: "Devices not communicating"**
 ```bash
 # Solutions:
-1. Use DISCOVER first to confirm connectivity
-2. Verify correct device ID
-3. Target device operational and accessible
-4. Stable mesh network without interference
+1. Verify all devices are on the same channel (NETWORK_STATUS)
+2. Check channel configuration with NETWORK_LIST
+3. Ensure network isolation is not blocking communication
+4. Use DISCOVER to test connectivity
 ```
 
 ---
@@ -450,5 +522,5 @@ struct LoRaStats {
 
 ---
 
-**Last updated**: July 30, 2025  
+**Last updated**: August 1, 2025  
 **Firmware version**: 0.4.0
