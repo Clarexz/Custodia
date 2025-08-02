@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-Custom Meshtastic Flash Tool - SIMPLE VERSION
-Only the essentials: flash + configure
-Auto-installs pyserial if needed
+Custom Meshtastic Flash Tool
 """
 
 import sys
@@ -77,7 +75,7 @@ def find_platformio():
     return None
 
 def main():
-    print("Custodia Flash Tool")
+    print("Custodia Flash Tool v2.0 - Con Network Security")
     
     # Check Python and install pyserial
     if not check_and_install_pyserial():
@@ -103,8 +101,14 @@ def main():
     
     args = parser.parse_args()
     
-    print(f"Configurando: {args.role} ID:{args.id} GPS:{args.gps}s {args.region} {args.mode} {args.radio}")
-    print(f"Canal: {args.channel}")
+    print(f"Configurando: {args.role} ID:{args.id} GPS:{args.gps}s {args.region} {args.mode} {args.radio} {args.channel}")
+    
+    if args.channel and args.channel != 'default':
+        print(f"Canal de seguridad: {args.channel}")
+        print(f"   - Se creará una red mesh privada")
+        print(f"   - Solo dispositivos con este canal pueden comunicarse")
+    else:
+        print("Usando configuración de red pública")
     
     # Find PlatformIO
     pio_cmd = find_platformio()
@@ -117,7 +121,7 @@ def main():
     print(f"Usando PlatformIO: {pio_cmd}")
     
     # Step 1: Flash firmware (back to working version)
-    print("\n[1/2] Flasheando firmware...")
+    print("\n[1/3] Flasheando firmware...")
     
     print("Detectando puerto para referencia...")
     port = detect_port()
@@ -150,7 +154,7 @@ def main():
         sys.exit(1)
     
     # Step 2: Configure device
-    print("\n[2/2] Configurando dispositivo...")
+    print("\n[2/3] Configurando dispositivo...")
     time.sleep(8)  # Wait for device reboot
     
     # Re-detect port after flash (may have changed)
@@ -193,6 +197,59 @@ def main():
                 response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
                 time.sleep(0.1)
         
+        config_success = any(word in response.lower() for word in ['completada exitosamente', 'configuracion guardada', '[ok]'])
+        
+        if config_success and args.channel and args.channel != 'default':
+            print(f"\n[3/3] Configurando canal de seguridad: {args.channel}")
+            
+            # Create network channel
+            channel_cmd = f"NETWORK_CREATE {args.channel}"
+            print(f"Enviando: {channel_cmd}")
+            ser.write((channel_cmd + '\r\n').encode())
+            time.sleep(2)  # Wait for channel creation
+            
+            # Read channel creation response
+            channel_response = ""
+            while ser.in_waiting > 0:
+                channel_response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+                time.sleep(0.1)
+            
+            if "[OK]" in channel_response or "creado exitosamente" in channel_response:
+                print(f"Canal '{args.channel}' creado exitosamente")
+                print("Canal guardado automáticamente en EEPROM")
+            else:
+                print(f"Advertencia: Canal {args.channel} podría ya existir")
+                print("  Esto es normal si re-flashea el mismo dispositivo")
+            
+            # Send START command to begin operation
+            print("Iniciando dispositivo...")
+            ser.write(b'START\r\n')
+            time.sleep(2)
+            
+            # Read final response
+            start_response = ""
+            while ser.in_waiting > 0:
+                start_response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+                time.sleep(0.1)
+            
+            if "modo operativo" in start_response.lower() or "running" in start_response.lower():
+                print("Dispositivo configurado y iniciado correctamente")
+                
+                # Show security configuration
+                print(f"\nCONFIGURACIÓN DE SEGURIDAD:")
+                print(f"   Canal configurado: {args.channel}")
+                print(f"   El dispositivo está en una red mesh privada")
+                print(f"   Solo dispositivos con el mismo canal pueden comunicarse")
+                print(f"\nPara verificar: pio device monitor --baud 115200")
+                print(f"   Luego ejecutar: NETWORK_LIST")
+            else:
+                print("Configuración parcial - verificar manualmente")
+        
+        elif config_success:
+            print("Configuración básica completada")
+            if args.channel == 'default':
+                print("Usando red mesh pública (sin encriptación)")
+        
         ser.close()
         
         # Check if configuration was successful
@@ -207,6 +264,13 @@ def main():
             print(f"3. Si no configurado, enviar manualmente:")
             print(f"   {config_cmd_q}")
             print(f"   O alternativamente: {config_cmd_alt}")
+            if args.channel and args.channel != 'default':
+                print(f"4. Configurar canal de seguridad:")
+                print(f"   NETWORK_CREATE {args.channel}")
+                print(f"5. Verificar: NETWORK_LIST")
+                print(f"6. Finalmente: START")
+            else:
+                print("4. Finalmente: START")
             print("4. Luego: CONFIG_SAVE")
             print("5. Finalmente: START")
             
@@ -216,6 +280,14 @@ def main():
         print(f"1. pio device monitor --baud 115200")
         print(f"2. Enviar: Q_CONFIG {args.role},{args.id},{args.gps},{args.region},{args.mode},{args.radio},{args.hops}")
         print(f"3. Si Q_CONFIG falla, enviar: CONFIG {args.role},{args.id},{args.gps},{args.region},{args.mode},{args.radio},{args.hops}")
+        if args.channel and args.channel != 'default':
+            print(f"4. Configurar canal de seguridad:")
+            print(f"   NETWORK_CREATE {args.channel}")
+            print(f"5. Verificar configuración:")
+            print(f"   NETWORK_LIST")
+            print(f"6. Finalmente: START")
+        else:
+            print("4. Finalmente: START")
         print("4. Luego: CONFIG_SAVE")
         print("5. Finalmente: START")
 

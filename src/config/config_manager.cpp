@@ -28,6 +28,16 @@ ConfigManager configManager;
  */
 ConfigManager::ConfigManager() {
     currentState = STATE_BOOT;
+
+    channelCount = 0;
+    activeChannelIndex = -1;
+    
+    // Limpiar array de channels
+    for (int i = 0; i < MAX_CHANNELS; i++) {
+        networkChannels[i].name = "";
+        networkChannels[i].psk = "";
+        networkChannels[i].active = false;
+    }
 }
 
 /*
@@ -224,6 +234,52 @@ void ConfigManager::loadConfig() {
     if (config.role == ROLE_NONE || config.deviceID == 0) {
         config.configValid = false;
     }
+
+    // ============== NUEVO: CARGAR NETWORK CHANNELS DESDE EEPROM ==============
+    // IMPORTANTE: Basado en pattern de Meshtastic NodeDB.cpp
+    
+    // Cargar cantidad de channels
+    channelCount = preferences.getUChar(EEPROM_CHANNEL_COUNT_KEY, 0);
+    
+    // Cargar índice del channel activo
+    activeChannelIndex = preferences.getChar(EEPROM_ACTIVE_CHANNEL_KEY, -1);
+    
+    // Cargar cada channel individual
+    for (int i = 0; i < channelCount && i < MAX_CHANNELS; i++) {
+        // Construir keys dinámicamente: "ch_0_name", "ch_1_name", etc.
+        String nameKey = String(EEPROM_CHANNEL_NAME_PREFIX) + String(i) + "_name";
+        String pskKey = String(EEPROM_CHANNEL_PSK_PREFIX) + String(i);
+        
+        // Cargar nombre del channel
+        String channelName = preferences.getString(nameKey.c_str(), "");
+        if (channelName.length() > 0) {
+            networkChannels[i].name = channelName;
+            
+            // Cargar PSK del channel
+            networkChannels[i].psk = preferences.getString(pskKey.c_str(), "");
+            
+            // Set active flag
+            networkChannels[i].active = true;
+            
+            Serial.println("[LOAD] Channel " + String(i) + ": " + channelName);
+        }
+    }
+    
+    // Actualizar campos en DeviceConfig para coherencia
+    if (activeChannelIndex >= 0 && activeChannelIndex < channelCount) {
+        config.activeChannelIndex = activeChannelIndex;
+        strncpy(config.activeChannelName, networkChannels[activeChannelIndex].name.c_str(), 
+                MAX_CHANNEL_NAME_LENGTH);
+        config.activeChannelName[MAX_CHANNEL_NAME_LENGTH] = '\0';
+        config.hasActiveChannel = true;
+        
+        Serial.println("[LOAD] Active channel: " + String(config.activeChannelName));
+    } else {
+        config.activeChannelIndex = 0;
+        strcpy(config.activeChannelName, "default");
+        config.hasActiveChannel = false;
+        Serial.println("[LOAD] No active channel found");
+    }
 }
 
 /*
@@ -240,6 +296,53 @@ void ConfigManager::saveConfig() {
     preferences.putUChar("radioProfile", config.radioProfile);
     
     Serial.println("[OK] Configuración guardada exitosamente.");
+
+    // Guardar cantidad total de channels
+    preferences.putUChar(EEPROM_CHANNEL_COUNT_KEY, channelCount);
+    
+    // Guardar índice del channel activo
+    preferences.putChar(EEPROM_ACTIVE_CHANNEL_KEY, activeChannelIndex);
+    
+    // Guardar cada channel individual
+    for (int i = 0; i < channelCount && i < MAX_CHANNELS; i++) {
+        // Construir keys dinámicamente: "ch_0_name", "ch_1_name", etc.
+        String nameKey = String(EEPROM_CHANNEL_NAME_PREFIX) + String(i) + "_name";
+        String pskKey = String(EEPROM_CHANNEL_PSK_PREFIX) + String(i);
+        
+        // Guardar nombre y PSK del channel
+        preferences.putString(nameKey.c_str(), networkChannels[i].name);
+        preferences.putString(pskKey.c_str(), networkChannels[i].psk);
+        
+        Serial.println("[SAVE] Channel " + String(i) + ": " + networkChannels[i].name);
+    }
+    
+    // Limpiar channels que ya no existen (si channelCount se redujo)
+    int previousCount = preferences.getUChar(EEPROM_CHANNEL_COUNT_KEY, 0);
+    for (int i = channelCount; i < previousCount && i < MAX_CHANNELS; i++) {
+        String nameKey = String(EEPROM_CHANNEL_NAME_PREFIX) + String(i) + "_name";
+        String pskKey = String(EEPROM_CHANNEL_PSK_PREFIX) + String(i);
+        
+        preferences.remove(nameKey.c_str());
+        preferences.remove(pskKey.c_str());
+        
+        Serial.println("[SAVE] Cleaned old channel " + String(i));
+    }
+    
+    // Actualizar campos en DeviceConfig para coherencia
+    if (activeChannelIndex >= 0 && activeChannelIndex < channelCount) {
+        config.activeChannelIndex = activeChannelIndex;
+        strncpy(config.activeChannelName, networkChannels[activeChannelIndex].name.c_str(), 
+                MAX_CHANNEL_NAME_LENGTH);
+        config.activeChannelName[MAX_CHANNEL_NAME_LENGTH] = '\0';
+        config.hasActiveChannel = true;
+    } else {
+        config.activeChannelIndex = 0;
+        strcpy(config.activeChannelName, "default");
+        config.hasActiveChannel = false;
+    }
+    
+    Serial.println("[SAVE] Saved " + String(channelCount) + " channels to EEPROM");
+    
 }
 
 /*

@@ -625,8 +625,8 @@ void ConfigManager::handleQuickConfig(String params) {
     if (paramCount >= 8 && parameters[7].length() > 0) {
         channelName = parameters[7];
         // Validar nombre del canal
-        if (channelName.length() >= 12) {
-            Serial.println("[Q_CONFIG] ✗ Nombre de canal muy largo: " + channelName + " (máximo 11 caracteres)");
+        if (channelName.length() >= MAX_CHANNEL_NAME_LENGTH) {
+            Serial.println("[Q_CONFIG] ✗ Nombre de canal muy largo: " + channelName + " (máximo 30 caracteres)");
             allValid = false;
         } else {
             Serial.println("[Q_CONFIG] ✓ Canal: " + channelName);
@@ -652,8 +652,12 @@ void ConfigManager::handleQuickConfig(String params) {
         
         // NUEVO: Solo agregar estas líneas para canal
         Serial.println("[Q_CONFIG] Configurando canal de seguridad...");
-        Serial.println("[Q_CONFIG] ✓ Canal '" + channelName + "' será configurado");
-        Serial.println("[Q_CONFIG] [INFO] Use comandos NETWORK_* para gestionar canales");
+        if (channelName != "default") {
+            Serial.println("[Q_CONFIG] ✓ Creando canal '" + channelName + "'...");
+            handleNetworkCreate(channelName);
+        } else {
+            Serial.println("[Q_CONFIG] ✓ Canal: default (sin encriptación)");
+        }
         Serial.println("[Q_CONFIG] ========================================");
         Serial.println("[Q_CONFIG] CONFIGURACIÓN COMPLETADA EXITOSAMENTE");
         Serial.println("[Q_CONFIG] ========================================");
@@ -723,25 +727,13 @@ String ConfigManager::getRegionString(LoRaRegion region) {
  * BLOQUE D: NETWORK SECURITY COMMANDS - IMPLEMENTACIÓN FUNCIONAL
  * ============================================================================
  * 
- * REEMPLAZAR las 5 funciones handleNetwork* en tu config_commands.cpp
  */
-
-// Variable global simple para almacenar canales (en memoria)
-struct SimpleChannel {
-    String name;
-    String psk;
-    bool active;
-};
-
-static SimpleChannel networkChannels[8];
-static int channelCount = 0;
-static int activeChannelIndex = -1;
 
 void ConfigManager::handleNetworkCreate(String params) {
     params.trim();
     
-    if (params.length() == 0 || params.length() > 11) {
-        Serial.println("[ERROR] Formato: NETWORK_CREATE <nombre> (máximo 11 caracteres)");
+    if (params.length() == 0 || params.length() > MAX_CHANNEL_NAME_LENGTH) {
+        Serial.println("[ERROR] Formato: NETWORK_CREATE <nombre> (máximo 30 caracteres)");
         return;
     }
     
@@ -773,6 +765,9 @@ void ConfigManager::handleNetworkCreate(String params) {
     Serial.println("[INFO] Hash del canal: 0x" + String(random(0x1000, 0xFFFF), HEX));
     
     channelCount++;
+
+    saveConfig();
+    Serial.println("[AUTO-SAVE] Canal guardado en EEPROM");
 }
 
 void ConfigManager::handleNetworkJoin(String params) {
@@ -792,6 +787,8 @@ void ConfigManager::handleNetworkJoin(String params) {
                 activeChannelIndex = i;
                 Serial.println("[OK] Conectado al canal '" + params + "'");
                 Serial.println("[INFO] Hash del canal: 0x" + String(random(0x1000, 0xFFFF), HEX));
+                saveConfig();
+                Serial.println("[AUTO-SAVE] Canal activo guardado en EEPROM");
                 return;
             }
         }
@@ -823,6 +820,8 @@ void ConfigManager::handleNetworkJoin(String params) {
                 activeChannelIndex = foundIndex;
                 Serial.println("[OK] Conectado al canal '" + channelName + "'");
                 Serial.println("[INFO] PSK verificada correctamente");
+                saveConfig();
+                Serial.println("[AUTO-SAVE] Canal activo guardado en EEPROM");
             } else {
                 Serial.println("[ERROR] PSK incorrecta para el canal '" + channelName + "'");
             }
@@ -836,6 +835,9 @@ void ConfigManager::handleNetworkJoin(String params) {
             
             Serial.println("[OK] Canal '" + channelName + "' creado y conectado");
             Serial.println("[INFO] PSK: " + pskString);
+
+            saveConfig();
+            Serial.println("[AUTO-SAVE] Canal creado y guardado en EEPROM");
         } else {
             Serial.println("[ERROR] Máximo 8 canales permitidos");
         }
@@ -956,6 +958,9 @@ void ConfigManager::handleNetworkDelete(String channelName) {
     
     Serial.println("[OK] Canal '" + channelName + "' eliminado exitosamente");
     Serial.println("[INFO] Canales restantes: " + String(channelCount) + "/8");
+
+    saveConfig();
+    Serial.println("[AUTO-SAVE] Cambios guardados en EEPROM");
 }
 
 // Función para obtener nombre del canal activo

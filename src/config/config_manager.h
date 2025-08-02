@@ -58,6 +58,20 @@ enum LoRaRegion {
 #define FREQ_AS_MHZ     433.0f  // Asia
 #define FREQ_JP_MHZ     920.0f  // Japón
 
+// ============== NETWORK CHANNELS EEPROM KEYS ==============
+// IMPORTANTE: Basado en pattern de Meshtastic NodeDB.cpp
+#define EEPROM_CHANNEL_COUNT_KEY    "net_ch_cnt"     // Número de channels configurados
+#define EEPROM_ACTIVE_CHANNEL_KEY   "active_ch"      // Índice del channel activo
+#define EEPROM_CHANNEL_NAME_PREFIX  "ch_"            // ch_0_name, ch_1_name, etc.
+#define EEPROM_CHANNEL_PSK_PREFIX   "psk_"           // psk_0, psk_1, etc.
+
+// Límites de channels (siguiendo Meshtastic limits)
+#define MAX_CHANNELS                8                // Máximo 8 channels como Meshtastic
+#define MAX_CHANNEL_NAME_LENGTH     30               // Nombre máximo 11 chars
+#define MAX_PSK_LENGTH             32               // PSK máximo 32 bytes (AES-256)
+
+// =========================================================
+
 /*
  * ESTRUCTURAS DE DATOS
  */
@@ -73,6 +87,10 @@ struct DeviceConfig {
     RadioProfile radioProfile; // NUEVO: Perfil LoRa actual
     bool configValid;        // Flag que indica si la configuración es válida
     char version[8];         // Versión del firmware para compatibilidad
+    //Basado en Meshtastic Channels.cpp structure
+    uint8_t activeChannelIndex;                    // Índice del channel activo (0-7)
+    char activeChannelName[MAX_CHANNEL_NAME_LENGTH + 1]; // Nombre del channel activo
+    bool hasActiveChannel;                         // Flag si hay channel configurado
 };
 
 /*
@@ -88,6 +106,18 @@ private:
     
     // Estado actual del sistema
     SystemState currentState;
+
+    // Estructura simple para channels en memoria
+    struct SimpleChannel {
+        String name;
+        String psk;
+        bool active;
+    };
+    
+    // Array de channels y contadores
+    SimpleChannel networkChannels[MAX_CHANNELS];
+    int channelCount;
+    int activeChannelIndex;
     
     /*
      * MÉTODOS PRIVADOS
