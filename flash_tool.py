@@ -77,7 +77,7 @@ def find_platformio():
     return None
 
 def main():
-    print("Custom Meshtastic Flash Tool - Simple Version")
+    print("Custodia Flash Tool")
     
     # Check Python and install pyserial
     if not check_and_install_pyserial():
@@ -95,6 +95,7 @@ def main():
     parser.add_argument('-mode', required=True, help='Data mode')
     parser.add_argument('-radio', required=True, help='Radio profile')
     parser.add_argument('-hops', type=int, default=3, help='Max hops (default: 3)')
+    parser.add_argument('--channel', default='default', help='Network security channel name (default: default)')
     
     if len(sys.argv) == 1:
         parser.print_help()
@@ -103,6 +104,7 @@ def main():
     args = parser.parse_args()
     
     print(f"Configurando: {args.role} ID:{args.id} GPS:{args.gps}s {args.region} {args.mode} {args.radio}")
+    print(f"Canal: {args.channel}")
     
     # Find PlatformIO
     pio_cmd = find_platformio()
@@ -161,7 +163,7 @@ def main():
     print(f"Usando puerto para configuracion: {port}")
     
     # Build configuration command - try both variants
-    config_cmd_q = f"Q_CONFIG {args.role},{args.id},{args.gps},{args.region},{args.mode},{args.radio},{args.hops}"
+    config_cmd_q = f"Q_CONFIG {args.role},{args.id},{args.gps},{args.region},{args.mode},{args.radio},{args.hops},{args.channel}"
     config_cmd_alt = f"CONFIG {args.role},{args.id},{args.gps},{args.region},{args.mode},{args.radio},{args.hops}"
     
     # Send configuration

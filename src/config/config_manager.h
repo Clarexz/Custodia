@@ -3,6 +3,8 @@
  * 
  * MODULARIZADO: Separación entre core y comandos
  * Declaraciones centralizadas para todo el sistema de configuración
+ * 
+ * BLOQUE D: Agregadas declaraciones para comandos NETWORK_*
  */
 
 #ifndef CONFIG_MANAGER_H
@@ -151,7 +153,15 @@ public:
     void handleStatus();
     void handleHelp();
     
-    // NUEVOS: Radio Profiles handlers
+    // ========== BLOQUE D: NETWORK SECURITY HANDLERS ==========
+    void handleNetworkCreate(String params);
+    void handleNetworkJoin(String params);
+    void handleNetworkList();
+    void handleNetworkInfo(String channelName);
+    void handleNetworkDelete(String channelName);
+    // ==========================================================
+    
+    // Radio Profiles handlers
     void handleConfigRadioProfile(String value);
     void handleRadioProfileCustom(String param, String value);
     void handleRadioProfileApply();
@@ -164,6 +174,7 @@ public:
     String getStateString(SystemState state);
     String getDataModeString(DataDisplayMode mode);
     String getRegionString(LoRaRegion region);
+    String getActiveChannelName();
 };
 
 /*

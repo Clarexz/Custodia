@@ -80,10 +80,10 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
         stats.packetsSent++;
         
         // SOLO mostrar debug en modo ADMIN
-        if (configManager.isAdminMode()) {
+        /*if (configManager.isAdminMode()) {
             Serial.println("[LoRa] Packet enviado exitosamente");
             Serial.println("[LoRa] PacketID: " + String(packet.packetID) + ", Air time: " + String(airTime) + " ms");
-        }
+        }*/
         
         // Volver a modo recepción
         radio.startReceive();
@@ -143,13 +143,13 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
         stats.packetsReceived++;
         
         // SOLO mostrar debug en modo ADMIN
-        if (configManager.isAdminMode()) {
+        /*if (configManager.isAdminMode()) {
             Serial.println("[LoRa] Packet válido recibido");
             Serial.println("[LoRa] RSSI: " + String(stats.lastRSSI) + " dBm");
             Serial.println("[LoRa] SNR: " + String(stats.lastSNR) + " dB");
             Serial.println("[LoRa] Source: " + String(packet->sourceID) + ", Hops: " + String(packet->hops) + "/" + String(packet->maxHops));
             Serial.println("[LoRa] Message Type: " + String(packet->messageType));
-        }
+        }*/
         
         // Agregar a seen packets para evitar futuras retransmisiones
         addToRecentPackets(packet->sourceID, packet->packetID);
@@ -229,13 +229,13 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
         }
 
         // DEBUG: Verificar por qué no se retransmite
-        if (configManager.isAdminMode())
+        /*if (configManager.isAdminMode())
         {
             Serial.println("[DEBUG] Message type: " + String(packet->messageType));
             Serial.println("[DEBUG] Should retransmit: " + String(shouldRetransmit));
-        }
+        }*/
 
-        if (shouldRetransmit)
+        /*if (shouldRetransmit)
         {
             if (configManager.isAdminMode())
             {
@@ -259,7 +259,7 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
             {
                 Serial.println("[DEBUG] Message type no válido para retransmisión");
             }
-        }
+        }*/
 
         return true;
         

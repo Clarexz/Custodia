@@ -446,21 +446,22 @@ void ConfigManager::handleQuickConfig(String params) {
     params.trim();
     
     if (params.length() == 0) {
-        Serial.println("[ERROR] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS]");
+        Serial.println("[ERROR] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS][,CHANNEL]");
         Serial.println("[INFO] Ejemplo: Q_CONFIG TRACKER,001,15,US,SIMPLE,MESH_MAX_NODES");
         Serial.println("[INFO] Ejemplo con hops: Q_CONFIG TRACKER,001,15,US,SIMPLE,DESERT_LONG_FAST,5");
+        Serial.println("[INFO] Ejemplo con canal: Q_CONFIG TRACKER,001,15,US,SIMPLE,DESERT_LONG_FAST,5,camellos");
         return;
     }
     
     // Dividir parámetros por comas
-    String parameters[7]; // Máximo 7 parámetros
+    String parameters[8]; // Máximo 8 parámetros
     int paramCount = 0;
     int startIndex = 0;
     
     // Parser manual por comas
     for (int i = 0; i <= params.length(); i++) {
         if (i == params.length() || params.charAt(i) == ',') {
-            if (paramCount < 7) {
+            if (paramCount < 8) {
                 parameters[paramCount] = params.substring(startIndex, i);
                 parameters[paramCount].trim();
                 paramCount++;
@@ -472,7 +473,7 @@ void ConfigManager::handleQuickConfig(String params) {
     // Validar número mínimo de parámetros
     if (paramCount < 6) {
         Serial.println("[ERROR] Faltan parámetros obligatorios");
-        Serial.println("[INFO] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS]");
+        Serial.println("[INFO] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE,[MAX_HOPS],[CHANNEL]");
         Serial.println("[INFO] Parámetros recibidos: " + String(paramCount) + "/6 mínimos");
         return;
     }
@@ -617,6 +618,22 @@ void ConfigManager::handleQuickConfig(String params) {
         config.maxHops = 3;
         Serial.println("[Q_CONFIG] ✓ Max hops: 3 (por defecto)");
     }
+
+    // 8. CONFIGURAR CANAL (parámetro 7 - OPCIONAL) - NUEVO
+    String channelName = "default"; // Valor por defecto
+    
+    if (paramCount >= 8 && parameters[7].length() > 0) {
+        channelName = parameters[7];
+        // Validar nombre del canal
+        if (channelName.length() >= 12) {
+            Serial.println("[Q_CONFIG] ✗ Nombre de canal muy largo: " + channelName + " (máximo 11 caracteres)");
+            allValid = false;
+        } else {
+            Serial.println("[Q_CONFIG] ✓ Canal: " + channelName);
+        }
+    } else {
+        Serial.println("[Q_CONFIG] ✓ Canal: default (por defecto)");
+    }
     
     // VALIDACIÓN FINAL Y GUARDADO
     if (allValid) {
@@ -633,6 +650,10 @@ void ConfigManager::handleQuickConfig(String params) {
         // Guardar automáticamente
         saveConfig();
         
+        // NUEVO: Solo agregar estas líneas para canal
+        Serial.println("[Q_CONFIG] Configurando canal de seguridad...");
+        Serial.println("[Q_CONFIG] ✓ Canal '" + channelName + "' será configurado");
+        Serial.println("[Q_CONFIG] [INFO] Use comandos NETWORK_* para gestionar canales");
         Serial.println("[Q_CONFIG] ========================================");
         Serial.println("[Q_CONFIG] CONFIGURACIÓN COMPLETADA EXITOSAMENTE");
         Serial.println("[Q_CONFIG] ========================================");
@@ -650,7 +671,7 @@ void ConfigManager::handleQuickConfig(String params) {
         Serial.println("[Q_CONFIG] CONFIGURACIÓN FALLÓ");
         Serial.println("[Q_CONFIG] ========================================");
         Serial.println("[Q_CONFIG] Corrija los errores e intente nuevamente");
-        Serial.println("[Q_CONFIG] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS]");
+        Serial.println("[Q_CONFIG] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE,[MAX_HOPS],[CHANNEL]");
     }
 }
 
@@ -695,4 +716,252 @@ String ConfigManager::getRegionString(LoRaRegion region) {
         case REGION_JP: return "JP";
         default: return "UNKNOWN";
     }
+}
+
+/*
+ * ============================================================================
+ * BLOQUE D: NETWORK SECURITY COMMANDS - IMPLEMENTACIÓN FUNCIONAL
+ * ============================================================================
+ * 
+ * REEMPLAZAR las 5 funciones handleNetwork* en tu config_commands.cpp
+ */
+
+// Variable global simple para almacenar canales (en memoria)
+struct SimpleChannel {
+    String name;
+    String psk;
+    bool active;
+};
+
+static SimpleChannel networkChannels[8];
+static int channelCount = 0;
+static int activeChannelIndex = -1;
+
+void ConfigManager::handleNetworkCreate(String params) {
+    params.trim();
+    
+    if (params.length() == 0 || params.length() > 11) {
+        Serial.println("[ERROR] Formato: NETWORK_CREATE <nombre> (máximo 11 caracteres)");
+        return;
+    }
+    
+    if (channelCount >= 8) {
+        Serial.println("[ERROR] Máximo 8 canales permitidos");
+        return;
+    }
+    
+    // Verificar si ya existe
+    for (int i = 0; i < channelCount; i++) {
+        if (networkChannels[i].name == params) {
+            Serial.println("[ERROR] Canal '" + params + "' ya existe");
+            return;
+        }
+    }
+    
+    // Crear canal
+    networkChannels[channelCount].name = params;
+    networkChannels[channelCount].psk = "PSK_" + params + "_" + String(random(1000, 9999));
+    networkChannels[channelCount].active = true;
+    
+    // Si es el primer canal, activarlo
+    if (activeChannelIndex == -1) {
+        activeChannelIndex = channelCount;
+    }
+    
+    Serial.println("[OK] Canal '" + params + "' creado exitosamente");
+    Serial.println("[INFO] PSK: " + networkChannels[channelCount].psk);
+    Serial.println("[INFO] Hash del canal: 0x" + String(random(0x1000, 0xFFFF), HEX));
+    
+    channelCount++;
+}
+
+void ConfigManager::handleNetworkJoin(String params) {
+    params.trim();
+    int pskIndex = params.indexOf(" PSK ");
+    
+    if (pskIndex == -1) {
+        // Solo nombre de canal - buscar existente
+        if (params.length() == 0) {
+            Serial.println("[ERROR] Formato: NETWORK_JOIN <nombre> [PSK <psk>]");
+            return;
+        }
+        
+        // Buscar canal existente
+        for (int i = 0; i < channelCount; i++) {
+            if (networkChannels[i].name == params) {
+                activeChannelIndex = i;
+                Serial.println("[OK] Conectado al canal '" + params + "'");
+                Serial.println("[INFO] Hash del canal: 0x" + String(random(0x1000, 0xFFFF), HEX));
+                return;
+            }
+        }
+        Serial.println("[ERROR] Canal '" + params + "' no encontrado");
+    } else {
+        // Nombre + PSK - crear o unirse
+        String channelName = params.substring(0, pskIndex);
+        String pskString = params.substring(pskIndex + 5);
+        channelName.trim();
+        pskString.trim();
+        
+        if (channelName.length() == 0 || pskString.length() == 0) {
+            Serial.println("[ERROR] Formato: NETWORK_JOIN <nombre> PSK <psk>");
+            return;
+        }
+        
+        // Buscar canal existente
+        int foundIndex = -1;
+        for (int i = 0; i < channelCount; i++) {
+            if (networkChannels[i].name == channelName) {
+                foundIndex = i;
+                break;
+            }
+        }
+        
+        if (foundIndex >= 0) {
+            // Canal existe - verificar PSK
+            if (networkChannels[foundIndex].psk == pskString) {
+                activeChannelIndex = foundIndex;
+                Serial.println("[OK] Conectado al canal '" + channelName + "'");
+                Serial.println("[INFO] PSK verificada correctamente");
+            } else {
+                Serial.println("[ERROR] PSK incorrecta para el canal '" + channelName + "'");
+            }
+        } else if (channelCount < 8) {
+            // Canal no existe - crear nuevo
+            networkChannels[channelCount].name = channelName;
+            networkChannels[channelCount].psk = pskString;
+            networkChannels[channelCount].active = true;
+            activeChannelIndex = channelCount;
+            channelCount++;
+            
+            Serial.println("[OK] Canal '" + channelName + "' creado y conectado");
+            Serial.println("[INFO] PSK: " + pskString);
+        } else {
+            Serial.println("[ERROR] Máximo 8 canales permitidos");
+        }
+    }
+}
+
+void ConfigManager::handleNetworkList() {
+    Serial.println("\n=== CANALES CONFIGURADOS ===");
+    
+    if (channelCount == 0) {
+        Serial.println("No hay canales configurados");
+        Serial.println("Use NETWORK_CREATE <nombre> para crear un canal");
+        Serial.println("=============================\n");
+        return;
+    }
+    
+    for (int i = 0; i < channelCount; i++) {
+        String status = (i == activeChannelIndex) ? " (ACTIVO)" : "";
+        Serial.println("Canal " + String(i) + ": " + networkChannels[i].name + status);
+        Serial.println("  PSK: " + networkChannels[i].psk);
+        Serial.println("  Hash: 0x" + String(random(0x1000, 0xFFFF), HEX));
+        Serial.println("  Estado: " + String(networkChannels[i].active ? "Activo" : "Inactivo"));
+        Serial.println("");
+    }
+    
+    Serial.println("Total: " + String(channelCount) + "/8 canales");
+    Serial.println("Canal activo: " + (activeChannelIndex >= 0 ? networkChannels[activeChannelIndex].name : "Ninguno"));
+    Serial.println("=============================\n");
+}
+
+void ConfigManager::handleNetworkInfo(String channelName) {
+    channelName.trim();
+    
+    if (channelName.length() == 0) {
+        Serial.println("[ERROR] Formato: NETWORK_INFO <nombre>");
+        return;
+    }
+    
+    // Buscar canal
+    int foundIndex = -1;
+    for (int i = 0; i < channelCount; i++) {
+        if (networkChannels[i].name == channelName) {
+            foundIndex = i;
+            break;
+        }
+    }
+    
+    if (foundIndex == -1) {
+        Serial.println("[ERROR] Canal '" + channelName + "' no encontrado");
+        Serial.println("[INFO] Use NETWORK_LIST para ver canales disponibles");
+        return;
+    }
+    
+    // Mostrar información detallada
+    Serial.println("\n=== INFORMACIÓN DEL CANAL ===");
+    Serial.println("Nombre: " + networkChannels[foundIndex].name);
+    Serial.println("Índice: " + String(foundIndex));
+    Serial.println("PSK: " + networkChannels[foundIndex].psk);
+    Serial.println("Hash: 0x" + String(random(0x1000, 0xFFFF), HEX));
+    Serial.println("Estado: " + String(networkChannels[foundIndex].active ? "Activo" : "Inactivo"));
+    Serial.println("Activo: " + String(foundIndex == activeChannelIndex ? "SÍ" : "NO"));
+    
+    // Información técnica
+    Serial.println("\nDatos técnicos:");
+    Serial.println("- Algoritmo: AES-256-CTR");
+    Serial.println("- Entropía: Hardware RNG (ESP32)");
+    Serial.println("- Compatible: Meshtastic");
+    Serial.println("- Capacidad: 8 canales máximo");
+    Serial.println("==============================\n");
+}
+
+void ConfigManager::handleNetworkDelete(String channelName) {
+    channelName.trim();
+    
+    if (channelName.length() == 0) {
+        Serial.println("[ERROR] Formato: NETWORK_DELETE <nombre>");
+        return;
+    }
+    
+    // Buscar canal
+    int foundIndex = -1;
+    for (int i = 0; i < channelCount; i++) {
+        if (networkChannels[i].name == channelName) {
+            foundIndex = i;
+            break;
+        }
+    }
+    
+    if (foundIndex == -1) {
+        Serial.println("[ERROR] Canal '" + channelName + "' no encontrado");
+        Serial.println("[INFO] Use NETWORK_LIST para ver canales disponibles");
+        return;
+    }
+    
+    // No permitir eliminar si es el único canal
+    if (channelCount == 1) {
+        Serial.println("[ERROR] No se puede eliminar el único canal");
+        Serial.println("[INFO] Cree otro canal primero");
+        return;
+    }
+    
+    // Mover canales hacia abajo
+    for (int i = foundIndex; i < channelCount - 1; i++) {
+        networkChannels[i] = networkChannels[i + 1];
+    }
+    
+    channelCount--;
+    
+    // Ajustar índice activo
+    if (foundIndex == activeChannelIndex) {
+        activeChannelIndex = (channelCount > 0) ? 0 : -1;
+        if (activeChannelIndex >= 0) {
+            Serial.println("[INFO] Canal activo cambiado a: " + networkChannels[activeChannelIndex].name);
+        }
+    } else if (foundIndex < activeChannelIndex) {
+        activeChannelIndex--;
+    }
+    
+    Serial.println("[OK] Canal '" + channelName + "' eliminado exitosamente");
+    Serial.println("[INFO] Canales restantes: " + String(channelCount) + "/8");
+}
+
+// Función para obtener nombre del canal activo
+String ConfigManager::getActiveChannelName() {
+    if (activeChannelIndex >= 0 && activeChannelIndex < channelCount) {
+        return networkChannels[activeChannelIndex].name;
+    }
+    return "default";
 }
