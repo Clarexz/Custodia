@@ -41,6 +41,7 @@ struct LoRaPacket {
     uint8_t hops;
     uint8_t maxHops;
     uint32_t packetID;
+    uint32_t channelHash;        // ← NUEVO: Hash del channel para filtering
     uint8_t payloadLength;
     uint8_t payload[32];
     uint16_t checksum;

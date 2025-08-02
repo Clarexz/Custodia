@@ -1,5 +1,5 @@
 /*
- * NETWORK_SECURITY.H - Sistema de Canales PSK basado en Meshtastic
+ * NETWORK_SECURITY.H - Sistema de Canales PSK basado en Meshtastic (COMPLETO)
  * 
  * Copiado directamente de: https://github.com/meshtastic/firmware/blob/master/src/mesh/Channels.h
  * Adaptado para nuestro sistema ESP32-S3 + SX1262
@@ -10,6 +10,7 @@
 #include <Arduino.h>
 #include <vector> 
 #include <functional>
+#include "../config/config_manager.h"
 
 /*
  * DEFINICIONES DE TIPOS (copiadas exactas de Meshtastic)
@@ -33,7 +34,7 @@ typedef struct _ChannelSettings {
      * A SHORT name that will be packed into the URL.  Less than 12 bytes.
      * Something for end users to call the channel
      */
-    char name[12];
+    char name[MAX_CHANNEL_NAME_LENGTH];
 
     /**
      * Used to construct a globally unique channel ID.
@@ -124,23 +125,47 @@ public:
     static void listChannels(std::function<void(const ChannelSettings&)> callback);
 
     /**
-     * Obtener el hash del canal activo (copiado de Meshtastic)
-     * @return Hash del canal para identificación
+     * Obtener el nombre del canal activo
+     * @return Nombre del canal activo o "default" si no hay ninguno
      */
-    static uint8_t getHash();
+    static const char* getActiveChannelName();
 
     /**
-     * Generar hash de un canal específico (copiado de Meshtastic)
-     * @param ch Configuración del canal
-     * @return Hash del canal
+     * Obtener el índice del canal activo
+     * @return Índice del canal activo o -1 si no hay ninguno
      */
-    static uint8_t generateHash(const ChannelSettings* ch);
+    static int getActiveChannelIndex();
+
+    /**
+     * Obtener número total de canales
+     * @return Número de canales configurados
+     */
+    static size_t getChannelCount();
+
+    /**
+     * Obtener hash del canal activo (ACTUALIZADO: 32-bit)
+     * @return Hash de 32-bit del canal para identificación
+     */
+    static uint32_t getHash();
+
+    /**
+     * Generar hash de un canal específico (ACTUALIZADO: 32-bit)
+     * @param ch Configuración del canal
+     * @return Hash de 32-bit del canal
+     */
+    static uint32_t generateHash(const ChannelSettings* ch);
 
     /**
      * Obtener la clave del canal activo (copiado de Meshtastic)
      * @return Puntero a la clave PSK
      */
     static const uint8_t* getKey();
+
+    /**
+     * Obtener el tamaño de la clave del canal activo
+     * @return Tamaño de la PSK del canal activo
+     */
+    static size_t getKeySize();
 
     /**
      * Obtener configuración del canal activo
@@ -156,15 +181,15 @@ public:
     static bool setActiveChannel(const char* name);
 
     /**
-     * Validar si un mensaje pertenece al canal activo
+     * Validar si un mensaje pertenece al canal activo (ACTUALIZADO: 32-bit)
      * @param channelHash Hash del canal del mensaje
      * @return true si el mensaje es válido para el canal activo
      */
-    static bool isValidForActiveChannel(uint8_t channelHash);
+    static bool isValidForActiveChannel(uint32_t channelHash);
 
     /**
      * Generar PSK aleatoria usando hardware RNG del ESP32
-     * @param psk Buffer donde se guardará la PSK (32 bytes)
+     * @param psk Buffer donde se guardará la PSK
      * @param length Longitud de la PSK (16 o 32 bytes)
      */
     static void generateRandomPSK(uint8_t* psk, size_t length);
@@ -186,6 +211,11 @@ public:
      * @return Longitud real de la PSK decodificada
      */
     static size_t base64ToPSK(const char* base64, uint8_t* psk, size_t maxLength);
+
+    /**
+     * Función para probar el sistema de hash
+     */
+    static void testHashGeneration();
 
 private:
     static std::vector<ChannelSettings> channels;

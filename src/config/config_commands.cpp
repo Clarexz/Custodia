@@ -8,6 +8,7 @@
 #include "config_manager.h"
 #include "config_commands.h"
 #include <WiFi.h>
+#include "../network/network_security.h"
 
 /*
  * MANEJADORES DE COMANDOS DE CONFIGURACIÓN
@@ -731,48 +732,73 @@ String ConfigManager::getRegionString(LoRaRegion region) {
 
 void ConfigManager::handleNetworkCreate(String params) {
     params.trim();
+    int pskIndex = params.indexOf(" PSK ");
     
-    if (params.length() == 0 || params.length() > MAX_CHANNEL_NAME_LENGTH) {
-        Serial.println("[ERROR] Formato: NETWORK_CREATE <nombre> (máximo 30 caracteres)");
-        return;
-    }
+    // Inicializar NetworkSecurity si no está inicializado
+    NetworkSecurity::init();
     
-    if (channelCount >= 8) {
-        Serial.println("[ERROR] Máximo 8 canales permitidos");
-        return;
-    }
-    
-    // Verificar si ya existe
-    for (int i = 0; i < channelCount; i++) {
-        if (networkChannels[i].name == params) {
-            Serial.println("[ERROR] Canal '" + params + "' ya existe");
+    if (pskIndex == -1) {
+        // Solo nombre de canal - PSK auto-generada
+        if (params.length() == 0 || params.length() > MAX_CHANNEL_NAME_LENGTH) {
+            Serial.println("[ERROR] Nombre de canal inválido (1-" + String(MAX_CHANNEL_NAME_LENGTH) + " caracteres)");
             return;
+        }
+        
+        // Crear canal usando NetworkSecurity
+        if (NetworkSecurity::createChannel(params.c_str())) {
+            // Obtener información del canal creado
+            ChannelSettings newChannel;
+            if (NetworkSecurity::getChannelInfo(params.c_str(), &newChannel)) {
+                uint32_t channelHash = NetworkSecurity::generateHash(&newChannel);
+                
+                char pskBase64[64];
+                NetworkSecurity::pskToBase64(newChannel.psk.bytes, newChannel.psk.size, pskBase64, sizeof(pskBase64));
+                
+                Serial.println("[OK] Canal '" + params + "' creado exitosamente");
+                Serial.println("[INFO] PSK: " + String(pskBase64));
+                Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);  // ← HASH REAL
+            }
+        } else {
+            Serial.println("[ERROR] No se pudo crear el canal '" + params + "'");
+        }
+        
+    } else {
+        // Nombre + PSK específica
+        String channelName = params.substring(0, pskIndex);
+        String pskString = params.substring(pskIndex + 5);
+        channelName.trim();
+        pskString.trim();
+        
+        if (channelName.length() == 0 || channelName.length() > MAX_CHANNEL_NAME_LENGTH) {
+            Serial.println("[ERROR] Nombre de canal inválido");
+            return;
+        }
+        
+        // Crear canal con PSK específica
+        if (NetworkSecurity::createChannelWithPSK(channelName.c_str(), pskString.c_str())) {
+            // Obtener información del canal creado
+            ChannelSettings newChannel;
+            if (NetworkSecurity::getChannelInfo(channelName.c_str(), &newChannel)) {
+                uint32_t channelHash = NetworkSecurity::generateHash(&newChannel);
+                
+                Serial.println("[OK] Canal '" + channelName + "' creado con PSK específica");
+                Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);  // ← HASH REAL
+            }
+        } else {
+            Serial.println("[ERROR] No se pudo crear el canal con PSK específica");
         }
     }
     
-    // Crear canal
-    networkChannels[channelCount].name = params;
-    networkChannels[channelCount].psk = "PSK_" + params + "_" + String(random(1000, 9999));
-    networkChannels[channelCount].active = true;
-    
-    // Si es el primer canal, activarlo
-    if (activeChannelIndex == -1) {
-        activeChannelIndex = channelCount;
-    }
-    
-    Serial.println("[OK] Canal '" + params + "' creado exitosamente");
-    Serial.println("[INFO] PSK: " + networkChannels[channelCount].psk);
-    Serial.println("[INFO] Hash del canal: 0x" + String(random(0x1000, 0xFFFF), HEX));
-    
-    channelCount++;
-
     saveConfig();
-    Serial.println("[AUTO-SAVE] Canal guardado en EEPROM");
+    Serial.println("[AUTO-SAVE] Configuración guardada en EEPROM");
 }
 
 void ConfigManager::handleNetworkJoin(String params) {
     params.trim();
     int pskIndex = params.indexOf(" PSK ");
+    
+    // Inicializar NetworkSecurity si no está inicializado
+    NetworkSecurity::init();
     
     if (pskIndex == -1) {
         // Solo nombre de canal - buscar existente
@@ -781,18 +807,15 @@ void ConfigManager::handleNetworkJoin(String params) {
             return;
         }
         
-        // Buscar canal existente
-        for (int i = 0; i < channelCount; i++) {
-            if (networkChannels[i].name == params) {
-                activeChannelIndex = i;
-                Serial.println("[OK] Conectado al canal '" + params + "'");
-                Serial.println("[INFO] Hash del canal: 0x" + String(random(0x1000, 0xFFFF), HEX));
-                saveConfig();
-                Serial.println("[AUTO-SAVE] Canal activo guardado en EEPROM");
-                return;
-            }
+        // Unirse al canal usando NetworkSecurity
+        if (NetworkSecurity::joinChannel(params.c_str())) {
+            uint32_t channelHash = NetworkSecurity::getHash();
+            Serial.println("[OK] Conectado al canal '" + params + "'");
+            Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);  // ← HASH REAL
+        } else {
+            Serial.println("[ERROR] No se pudo conectar al canal '" + params + "'");
         }
-        Serial.println("[ERROR] Canal '" + params + "' no encontrado");
+        
     } else {
         // Nombre + PSK - crear o unirse
         String channelName = params.substring(0, pskIndex);
@@ -800,72 +823,69 @@ void ConfigManager::handleNetworkJoin(String params) {
         channelName.trim();
         pskString.trim();
         
-        if (channelName.length() == 0 || pskString.length() == 0) {
-            Serial.println("[ERROR] Formato: NETWORK_JOIN <nombre> PSK <psk>");
+        if (channelName.length() == 0) {
+            Serial.println("[ERROR] Nombre de canal inválido");
             return;
         }
         
-        // Buscar canal existente
-        int foundIndex = -1;
-        for (int i = 0; i < channelCount; i++) {
-            if (networkChannels[i].name == channelName) {
-                foundIndex = i;
-                break;
-            }
-        }
-        
-        if (foundIndex >= 0) {
-            // Canal existe - verificar PSK
-            if (networkChannels[foundIndex].psk == pskString) {
-                activeChannelIndex = foundIndex;
-                Serial.println("[OK] Conectado al canal '" + channelName + "'");
-                Serial.println("[INFO] PSK verificada correctamente");
-                saveConfig();
-                Serial.println("[AUTO-SAVE] Canal activo guardado en EEPROM");
-            } else {
-                Serial.println("[ERROR] PSK incorrecta para el canal '" + channelName + "'");
-            }
-        } else if (channelCount < 8) {
-            // Canal no existe - crear nuevo
-            networkChannels[channelCount].name = channelName;
-            networkChannels[channelCount].psk = pskString;
-            networkChannels[channelCount].active = true;
-            activeChannelIndex = channelCount;
-            channelCount++;
-            
-            Serial.println("[OK] Canal '" + channelName + "' creado y conectado");
-            Serial.println("[INFO] PSK: " + pskString);
-
-            saveConfig();
-            Serial.println("[AUTO-SAVE] Canal creado y guardado en EEPROM");
+        // Unirse con PSK específica
+        if (NetworkSecurity::joinChannelWithPSK(channelName.c_str(), pskString.c_str())) {
+            uint32_t channelHash = NetworkSecurity::getHash();
+            Serial.println("[OK] Conectado al canal '" + channelName + "' con PSK específica");
+            Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);  // ← HASH REAL
         } else {
-            Serial.println("[ERROR] Máximo 8 canales permitidos");
+            Serial.println("[ERROR] No se pudo conectar al canal con PSK específica");
         }
     }
+    
+    saveConfig();
+    Serial.println("[AUTO-SAVE] Canal activo guardado en EEPROM");
 }
 
 void ConfigManager::handleNetworkList() {
-    Serial.println("\n=== CANALES CONFIGURADOS ===");
+    Serial.println("\n========== LISTA DE CANALES ==========");
+    
+    // Inicializar NetworkSecurity si no está inicializado
+    NetworkSecurity::init();
+    
+    size_t channelCount = NetworkSecurity::getChannelCount();
+    const char* activeChannelName = NetworkSecurity::getActiveChannelName();
     
     if (channelCount == 0) {
         Serial.println("No hay canales configurados");
         Serial.println("Use NETWORK_CREATE <nombre> para crear un canal");
-        Serial.println("=============================\n");
+        Serial.println("======================================\n");
         return;
     }
     
-    for (int i = 0; i < channelCount; i++) {
-        String status = (i == activeChannelIndex) ? " (ACTIVO)" : "";
-        Serial.println("Canal " + String(i) + ": " + networkChannels[i].name + status);
-        Serial.println("  PSK: " + networkChannels[i].psk);
-        Serial.println("  Hash: 0x" + String(random(0x1000, 0xFFFF), HEX));
-        Serial.println("  Estado: " + String(networkChannels[i].active ? "Activo" : "Inactivo"));
+    // Listar todos los channels usando NetworkSecurity
+    int index = 0;
+    NetworkSecurity::listChannels([&](const ChannelSettings& channel) {
+        // Generar hash real usando NetworkSecurity
+        uint32_t channelHash = NetworkSecurity::generateHash(&channel);
+        
+        // Formatear PSK para mostrar
+        char pskBase64[64];
+        NetworkSecurity::pskToBase64(channel.psk.bytes, channel.psk.size, pskBase64, sizeof(pskBase64));
+        
+        // Determinar si es el canal activo
+        bool isActive = (strcmp(channel.name, activeChannelName) == 0);
+        String status = isActive ? " (ACTIVO)" : "";
+        
+        Serial.println("Canal " + String(index) + ": " + String(channel.name) + status);
+        Serial.println("  PSK: " + String(pskBase64));
+        Serial.printf("  Hash: 0x%08X\n", channelHash);  // ← HASH REAL de 32-bit
+        Serial.println("  ID: " + String(channel.id));
+        Serial.println("  Encriptado: " + String(channel.encrypted ? "Sí" : "No"));
+        Serial.println("  Visible: " + String(channel.discoverable ? "Sí" : "No"));
         Serial.println("");
-    }
+        
+        index++;
+    });
     
-    Serial.println("Total: " + String(channelCount) + "/8 canales");
-    Serial.println("Canal activo: " + (activeChannelIndex >= 0 ? networkChannels[activeChannelIndex].name : "Ninguno"));
-    Serial.println("=============================\n");
+    Serial.println("Total: " + String(channelCount) + " canales");
+    Serial.println("Canal activo: " + String(activeChannelName));
+    Serial.println("=======================================\n");
 }
 
 void ConfigManager::handleNetworkInfo(String channelName) {
@@ -876,37 +896,41 @@ void ConfigManager::handleNetworkInfo(String channelName) {
         return;
     }
     
-    // Buscar canal
-    int foundIndex = -1;
-    for (int i = 0; i < channelCount; i++) {
-        if (networkChannels[i].name == channelName) {
-            foundIndex = i;
-            break;
-        }
-    }
+    // Inicializar NetworkSecurity si no está inicializado
+    NetworkSecurity::init();
     
-    if (foundIndex == -1) {
+    // Buscar canal usando NetworkSecurity
+    ChannelSettings channelInfo;
+    if (!NetworkSecurity::getChannelInfo(channelName.c_str(), &channelInfo)) {
         Serial.println("[ERROR] Canal '" + channelName + "' no encontrado");
         Serial.println("[INFO] Use NETWORK_LIST para ver canales disponibles");
         return;
     }
     
-    // Mostrar información detallada
-    Serial.println("\n=== INFORMACIÓN DEL CANAL ===");
-    Serial.println("Nombre: " + networkChannels[foundIndex].name);
-    Serial.println("Índice: " + String(foundIndex));
-    Serial.println("PSK: " + networkChannels[foundIndex].psk);
-    Serial.println("Hash: 0x" + String(random(0x1000, 0xFFFF), HEX));
-    Serial.println("Estado: " + String(networkChannels[foundIndex].active ? "Activo" : "Inactivo"));
-    Serial.println("Activo: " + String(foundIndex == activeChannelIndex ? "SÍ" : "NO"));
+    // Generar hash real
+    uint32_t channelHash = NetworkSecurity::generateHash(&channelInfo);
     
-    // Información técnica
-    Serial.println("\nDatos técnicos:");
-    Serial.println("- Algoritmo: AES-256-CTR");
-    Serial.println("- Entropía: Hardware RNG (ESP32)");
-    Serial.println("- Compatible: Meshtastic");
-    Serial.println("- Capacidad: 8 canales máximo");
-    Serial.println("==============================\n");
+    // Formatear PSK para mostrar
+    char pskBase64[64];
+    NetworkSecurity::pskToBase64(channelInfo.psk.bytes, channelInfo.psk.size, pskBase64, sizeof(pskBase64));
+    
+    // Determinar si es el canal activo
+    const char* activeChannelName = NetworkSecurity::getActiveChannelName();
+    bool isActive = (strcmp(channelInfo.name, activeChannelName) == 0);
+    
+    // Mostrar información detallada REAL
+    Serial.println("\n=== INFORMACIÓN DEL CANAL ===");
+    Serial.println("Nombre: " + String(channelInfo.name));
+    Serial.println("ID: " + String(channelInfo.id));
+    Serial.println("PSK: " + String(pskBase64));
+    Serial.printf("Hash: 0x%08X\n", channelHash);  // ← HASH REAL de 32-bit
+    Serial.println("Encriptado: " + String(channelInfo.encrypted ? "Sí" : "No"));
+    Serial.println("Visible: " + String(channelInfo.discoverable ? "Sí" : "No"));
+    Serial.println("PSK Auth: " + String(channelInfo.psk_auth ? "Sí" : "No"));
+    Serial.println("Versión: " + String(channelInfo.legacy_config_version));
+    Serial.println("Estado: " + String(isActive ? "ACTIVO" : "Inactivo"));
+    Serial.println("PSK Size: " + String(channelInfo.psk.size) + " bytes");
+    Serial.println("============================\n");
 }
 
 void ConfigManager::handleNetworkDelete(String channelName) {
@@ -917,56 +941,38 @@ void ConfigManager::handleNetworkDelete(String channelName) {
         return;
     }
     
-    // Buscar canal
-    int foundIndex = -1;
-    for (int i = 0; i < channelCount; i++) {
-        if (networkChannels[i].name == channelName) {
-            foundIndex = i;
-            break;
-        }
-    }
+    // Inicializar NetworkSecurity si no está inicializado
+    NetworkSecurity::init();
     
-    if (foundIndex == -1) {
+    // Verificar que el canal existe
+    ChannelSettings channelInfo;
+    if (!NetworkSecurity::getChannelInfo(channelName.c_str(), &channelInfo)) {
         Serial.println("[ERROR] Canal '" + channelName + "' no encontrado");
         Serial.println("[INFO] Use NETWORK_LIST para ver canales disponibles");
         return;
     }
     
     // No permitir eliminar si es el único canal
-    if (channelCount == 1) {
+    if (NetworkSecurity::getChannelCount() == 1) {
         Serial.println("[ERROR] No se puede eliminar el único canal");
         Serial.println("[INFO] Cree otro canal primero");
         return;
     }
     
-    // Mover canales hacia abajo
-    for (int i = foundIndex; i < channelCount - 1; i++) {
-        networkChannels[i] = networkChannels[i + 1];
+    // Eliminar canal usando NetworkSecurity
+    if (NetworkSecurity::deleteChannel(channelName.c_str())) {
+        Serial.println("[OK] Canal '" + channelName + "' eliminado exitosamente");
+        Serial.println("[INFO] Canales restantes: " + String(NetworkSecurity::getChannelCount()));
+        
+        saveConfig();
+        Serial.println("[AUTO-SAVE] Cambios guardados en EEPROM");
+    } else {
+        Serial.println("[ERROR] No se pudo eliminar el canal '" + channelName + "'");
     }
-    
-    channelCount--;
-    
-    // Ajustar índice activo
-    if (foundIndex == activeChannelIndex) {
-        activeChannelIndex = (channelCount > 0) ? 0 : -1;
-        if (activeChannelIndex >= 0) {
-            Serial.println("[INFO] Canal activo cambiado a: " + networkChannels[activeChannelIndex].name);
-        }
-    } else if (foundIndex < activeChannelIndex) {
-        activeChannelIndex--;
-    }
-    
-    Serial.println("[OK] Canal '" + channelName + "' eliminado exitosamente");
-    Serial.println("[INFO] Canales restantes: " + String(channelCount) + "/8");
-
-    saveConfig();
-    Serial.println("[AUTO-SAVE] Cambios guardados en EEPROM");
 }
 
 // Función para obtener nombre del canal activo
 String ConfigManager::getActiveChannelName() {
-    if (activeChannelIndex >= 0 && activeChannelIndex < channelCount) {
-        return networkChannels[activeChannelIndex].name;
-    }
-    return "default";
+    NetworkSecurity::init();
+    return String(NetworkSecurity::getActiveChannelName());
 }
