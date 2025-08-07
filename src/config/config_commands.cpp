@@ -9,8 +9,9 @@
 #include "config_commands.h"
 #include <WiFi.h>
 #include "../network/network_security.h"
-#include "../lora/lora_types.h"        // Para LoRaPacket, MSG_GPS_DATA, LORA_BROADCAST_ADDR
+#include "../lora/lora_types.h"
 #include "../network/crypto_engine.h"
+#include "../lora.h"
 
 /*
  * MANEJADORES DE COMANDOS DE CONFIGURACIÓN
@@ -1072,4 +1073,129 @@ void ConfigManager::handleTestEncrypt() {
     }
     
     Serial.println("[TEST] ================================\n");
+}
+
+/*
+ * TEST_DECRYPT - Probar sistema de decriptación y filtrado
+ */
+void ConfigManager::handleTestDecrypt() {
+    Serial.println("[TEST] === DECRYPTION & FILTERING TEST ===");
+    
+    // Verificar canal activo
+    String activeChannelStr = getActiveChannelName();
+    const char* activeChannel = activeChannelStr.c_str();
+    Serial.printf("[TEST] Active channel: %s\n", activeChannel);
+    
+    if (strcmp(activeChannel, "default") == 0) {
+        Serial.println("[TEST] WARNING: No channel configured - create one with NETWORK_CREATE");
+        return;
+    }
+    
+    // Verificar hash del canal activo
+    uint32_t activeHash = NetworkSecurity::getHash();
+    Serial.printf("[TEST] Active channel hash: 0x%08X\n", activeHash);
+    
+    // Test 1: Validar packet del canal correcto
+    Serial.println("[TEST] --- Test 1: Valid Channel Hash ---");
+    bool validResult = NetworkSecurity::isValidForActiveChannel(activeHash);
+    Serial.printf("[TEST] isValidForActiveChannel(0x%08X): %s\n", 
+                  activeHash, validResult ? "PASS" : "FAIL");
+    
+    // Test 2: Rechazar packet de canal diferente
+    Serial.println("[TEST] --- Test 2: Invalid Channel Hash ---");
+    uint32_t invalidHash = 0xDEADBEEF;  // Hash falso
+    bool invalidResult = NetworkSecurity::isValidForActiveChannel(invalidHash);
+    Serial.printf("[TEST] isValidForActiveChannel(0x%08X): %s\n", 
+                  invalidHash, invalidResult ? "FAIL" : "PASS");
+    
+    // Test 3: Detectar packet encriptado
+    Serial.println("[TEST] --- Test 3: Packet Encryption Detection ---");
+    LoRaPacket testPacket = {};
+    testPacket.messageType = MSG_GPS_DATA;
+    testPacket.sourceID = 999;
+    testPacket.channelHash = activeHash;  // Canal correcto
+    testPacket.payloadLength = 16;
+    
+    // Simular payload (normalmente vendría encriptado)
+    strcpy((char*)testPacket.payload, "TEST_PAYLOAD_123");
+    
+    bool isEncrypted = NetworkSecurity::isPacketEncrypted(&testPacket);
+    Serial.printf("[TEST] Packet appears encrypted: %s\n", isEncrypted ? "YES" : "NO");
+    
+    // Test 4: Intentar decriptación
+    Serial.println("[TEST] --- Test 4: Decryption Attempt ---");
+    if (NetworkSecurity::isCryptoEnabled()) {
+        bool decryptSuccess = NetworkSecurity::attemptDecrypt(&testPacket);
+        Serial.printf("[TEST] Decryption attempt: %s\n", decryptSuccess ? "SUCCESS" : "FAILED");
+        
+        if (decryptSuccess) {
+            Serial.println("[TEST] Payload after decryption attempt:");
+            Serial.printf("[TEST] '%s'\n", (char*)testPacket.payload);
+        }
+    } else {
+        Serial.println("[TEST] Crypto disabled - decryption not needed");
+    }
+    
+    // Test 5: Mostrar estadísticas de seguridad actuales
+    Serial.println("[TEST] --- Test 5: Security Statistics ---");
+    extern LoRaManager loraManager;
+    LoRaStats stats = loraManager.getStats();
+    
+    Serial.printf("[TEST] Packets ignored: %u\n", stats.packetsIgnored);
+    Serial.printf("[TEST] Decryption failures: %u\n", stats.decryptionFailures);
+    Serial.printf("[TEST] Channel mismatches: %u\n", stats.channelMismatches);
+    Serial.printf("[TEST] Valid packets processed: %u\n", stats.validPacketsProcessed);
+    Serial.printf("[TEST] Encrypted packets received: %u\n", stats.encryptedPacketsReceived);
+    Serial.printf("[TEST] Unencrypted packets received: %u\n", stats.unencryptedPacketsReceived);
+    
+    // Resumen final
+    Serial.println("[TEST] === TEST SUMMARY ===");
+    Serial.printf("[TEST] Channel validation: %s\n", 
+                  (validResult && !invalidResult) ? "WORKING" : "FAILED");
+    Serial.printf("[TEST] Crypto system: %s\n", 
+                  NetworkSecurity::isCryptoEnabled() ? "ENABLED" : "DISABLED");
+    Serial.println("[TEST] 🎉 PHASE 4 DECRYPTION & FILTERING TEST COMPLETED!");
+}
+
+/*
+ * STATS - Mostrar estadísticas completas (básicas + mesh + seguridad)
+ */
+void ConfigManager::handleStats() {
+    // Primero llamar a las funciones existentes del LoRaManager
+    extern LoRaManager loraManager;
+    
+    // Mostrar estadísticas básicas del LoRa
+    loraManager.printStats();
+    
+    // Mostrar estadísticas mesh
+    loraManager.printMeshStats();
+    
+    // NUEVO: Mostrar estadísticas de seguridad (Fase 4)
+    Serial.println("\n[LoRa] === ESTADÍSTICAS DE SEGURIDAD ===");
+    
+    LoRaStats stats = loraManager.getStats();
+    
+    // Canal activo
+    String activeChannelStr = getActiveChannelName();
+    const char* activeChannel = activeChannelStr.c_str();
+    Serial.println("Canal activo: " + String(activeChannel));
+    
+    // Hash del canal
+    if (strcmp(activeChannel, "default") != 0) {
+        uint32_t channelHash = NetworkSecurity::getHash();
+        Serial.printf("Hash del canal: 0x%08X\n", channelHash);
+    }
+    
+    // Estado de crypto
+    Serial.println("Encriptación: " + String(NetworkSecurity::isCryptoEnabled() ? "HABILITADA" : "DESHABILITADA"));
+    
+    // Contadores de Fase 4
+    Serial.println("Packets ignorados (otros canales): " + String(stats.packetsIgnored));
+    Serial.println("Channel hash mismatches: " + String(stats.channelMismatches));
+    Serial.println("Packets válidos procesados: " + String(stats.validPacketsProcessed));
+    Serial.println("Packets encriptados recibidos: " + String(stats.encryptedPacketsReceived));
+    Serial.println("Packets sin encriptar recibidos: " + String(stats.unencryptedPacketsReceived));
+    Serial.println("Fallos de decriptación: " + String(stats.decryptionFailures));
+    
+    Serial.println("========================================");
 }

@@ -12,6 +12,7 @@
 #include <cstring>
 #include "../config/config_manager.h"
 #include "crypto_engine.h"
+#include "../lora/lora_types.h"
 
 // Variables estáticas
 std::vector<ChannelSettings> NetworkSecurity::channels;
@@ -535,4 +536,67 @@ void NetworkSecurity::autoConfigureCrypto()
     } else {
         Serial.println("[NETWORK] Auto-crypto: Disabled (no PSK or no channel)");
     }
+}
+
+bool NetworkSecurity::attemptDecrypt(LoRaPacket* packet) {
+    if (!packet) {
+        return false;
+    }
+    
+    // Si crypto no está habilitado, no hay nada que decriptar
+    if (!isCryptoEnabled()) {
+        return true;  // Success - no decryption needed
+    }
+    
+    // Configurar crypto engine con PSK del canal activo
+    if (!setCryptoForActiveChannel()) {
+        return false;  // Failed to set crypto key
+    }
+    
+    // Verificar que crypto engine tiene key válida
+    extern CryptoEngine* crypto;
+    if (!crypto || crypto->getKeySize() == 0) {
+        return false;  // No crypto engine or no key
+    }
+    
+    // Log solo en modo ADMIN
+    extern ConfigManager configManager;
+    if (configManager.isAdminMode()) {
+        Serial.printf("[SECURITY] Attempting decryption for packet ID=%u from source=%u\n", 
+                     packet->packetID, packet->sourceID);
+    }
+    
+    // Intentar decriptación
+    int decryptResult = crypto->decrypt(packet->sourceID, 
+                                       packet->packetID,
+                                       packet->payloadLength, 
+                                       packet->payload);
+    
+    bool success = (decryptResult >= 0);
+    
+    // Log resultado solo en modo ADMIN
+    if (configManager.isAdminMode()) {
+        if (success) {
+            Serial.println("[SECURITY] Decryption successful");
+        } else {
+            Serial.printf("[SECURITY] Decryption failed with code: %d\n", decryptResult);
+        }
+    }
+    
+    return success;
+}
+
+bool NetworkSecurity::isPacketEncrypted(const LoRaPacket* packet) {
+    if (!packet || packet->payloadLength == 0) {
+        return false;
+    }
+    
+    // Heurística simple: si tenemos crypto habilitado y este packet es de nuestro canal,
+    // asumimos que está encriptado
+    if (isCryptoEnabled() && isValidForActiveChannel(packet->channelHash)) {
+        return true;
+    }
+    
+    // Si no tenemos crypto, asumimos que no está encriptado
+    return false;
 }

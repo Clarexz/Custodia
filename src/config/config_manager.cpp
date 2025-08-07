@@ -177,9 +177,11 @@ void ConfigManager::processSerialInput() {
     }
     else if (input == "TEST_ENCRYPT") {
         handleTestEncrypt();
+    } else if (input.startsWith("TEST_DECRYPT")) {
+        handleTestDecrypt();
+    } else if (input == "STATS") {
+        handleStats();
     }
-    // ==================================================
-    
     else if (input.startsWith("MODE ")) {
         handleModeChange(input.substring(5));
     }

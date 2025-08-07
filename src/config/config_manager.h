@@ -190,6 +190,8 @@ public:
     void handleNetworkInfo(String channelName);
     void handleNetworkDelete(String channelName);
     void handleTestEncrypt();
+    void handleTestDecrypt();
+    void handleStats();
     // ==========================================================
     
     // Radio Profiles handlers

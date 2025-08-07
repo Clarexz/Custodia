@@ -132,6 +132,13 @@ struct LoRaStats {
     uint32_t duplicatesIgnored;
     uint32_t rebroadcasts;
     uint32_t hopLimitReached;
+    // ===== NUEVOS CAMPOS PARA FASE 4: SECURITY =====
+    uint32_t packetsIgnored;         // Packets de otros canales (filtrados por channelHash)
+    uint32_t decryptionFailures;     // Packets que fallaron decriptación
+    uint32_t channelMismatches;      // Channel hash mismatches específicos
+    uint32_t validPacketsProcessed;  // Packets válidos que pasaron todos los filtros
+    uint32_t encryptedPacketsReceived; // Packets que llegaron encriptados
+    uint32_t unencryptedPacketsReceived; // Packets en claro (legacy/no-crypto)
 };
 
 /*

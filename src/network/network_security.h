@@ -11,6 +11,7 @@
 #include <vector> 
 #include <functional>
 #include "../config/config_manager.h"
+#include "../lora/lora_types.h"
 
 /*
  * DEFINICIONES DE TIPOS (copiadas exactas de Meshtastic)
@@ -222,6 +223,19 @@ public:
     static size_t getActiveChannelKeySize();
     static bool isCryptoEnabled();
     static void autoConfigureCrypto();
+    /**
+     * Intentar decriptar un packet usando el canal activo
+     * @param packet Puntero al packet a decriptar (se modifica in-place)
+     * @return true si decriptación exitosa o no necesaria, false si falló
+     */
+    static bool attemptDecrypt(LoRaPacket* packet);
+
+    /**
+     * Detectar si un packet está encriptado (heurística)
+     * @param packet Puntero al packet a analizar
+     * @return true si parece estar encriptado
+     */
+    static bool isPacketEncrypted(const LoRaPacket* packet);
 
 private:
     static std::vector<ChannelSettings> channels;

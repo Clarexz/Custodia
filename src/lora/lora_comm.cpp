@@ -160,6 +160,52 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
             }
             return false;  // Packet duplicado, ignorar
         }
+
+        // ===== FASE 4: CHANNEL FILTERING =====
+        // Verificar si el packet pertenece al canal activo
+        if (!NetworkSecurity::isValidForActiveChannel(packet->channelHash)) {
+            stats.channelMismatches++;
+            stats.packetsIgnored++;
+            
+            // SOLO mostrar en modo ADMIN
+            if (configManager.isAdminMode()) {
+                Serial.printf("[SECURITY] Ignoring packet from different channel (hash=0x%08X)\n", 
+                             packet->channelHash);
+            }
+            
+            return false;  // Ignorar packet de otro canal
+        }
+        
+        // ===== FASE 4: PACKET DECRYPTION =====
+        // Detectar si el packet está encriptado (para estadísticas)
+        bool wasEncrypted = NetworkSecurity::isPacketEncrypted(packet);
+        if (wasEncrypted) {
+            stats.encryptedPacketsReceived++;
+        } else {
+            stats.unencryptedPacketsReceived++;
+        }
+        
+        // Intentar decriptar si es necesario
+        if (!NetworkSecurity::attemptDecrypt(packet)) {
+            stats.decryptionFailures++;
+            
+            // SOLO mostrar en modo ADMIN
+            if (configManager.isAdminMode()) {
+                Serial.printf("[SECURITY] Failed to decrypt packet from source=%u, ID=%u\n", 
+                             packet->sourceID, packet->packetID);
+            }
+            
+            return false;  // Falló decriptación = ignorar packet
+        }
+        
+        // ===== PACKET SUCCESSFULLY PROCESSED =====
+        stats.validPacketsProcessed++;
+        
+        // SOLO mostrar debug en modo ADMIN
+        if (configManager.isAdminMode()) {
+            Serial.printf("[SECURITY] Packet validated: channel hash=0x%08X, encrypted=%s\n", 
+                         packet->channelHash, wasEncrypted ? "YES" : "NO");
+        }
         
         // Packet válido y nuevo
         stats.packetsReceived++;
