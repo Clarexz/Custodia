@@ -90,6 +90,8 @@ class CryptoEngine
      */
     int random(uint8_t *buf, size_t len);
 
+    size_t getKeySize() const { return keySize; }
+
   private:
     /**
      * Init our 128 bit nonce for a new packet

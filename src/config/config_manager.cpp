@@ -175,6 +175,9 @@ void ConfigManager::processSerialInput() {
     else if (input.startsWith("NETWORK_DELETE ")) {
         handleNetworkDelete(input.substring(15));
     }
+    else if (input == "TEST_ENCRYPT") {
+        handleTestEncrypt();
+    }
     // ==================================================
     
     else if (input.startsWith("MODE ")) {

@@ -11,6 +11,7 @@
 #include <mbedtls/base64.h>
 #include <cstring>
 #include "../config/config_manager.h"
+#include "crypto_engine.h"
 
 // Variables estáticas
 std::vector<ChannelSettings> NetworkSecurity::channels;
@@ -22,6 +23,13 @@ void NetworkSecurity::init()
     if (initialized) return;
     
     Serial.println("[NETWORK] Initializing Network Security...");
+
+    // Inicializar crypto engine global si no existe
+    if (!crypto) {
+        crypto = new CryptoEngine();
+        crypto->init();
+        Serial.println("[NETWORK] Initialized global crypto engine");
+    }
     
     // Cargar canales desde EEPROM (placeholder por ahora)
     loadChannelsFromEEPROM();
@@ -153,6 +161,9 @@ bool NetworkSecurity::joinChannel(const char* name)
     activeChannelIndex = index;
     Serial.printf("[NETWORK] Joined channel '%s'\n", name);
     return true;
+
+    // Auto-configurar crypto para el nuevo canal activo
+    autoConfigureCrypto();
 }
 
 bool NetworkSecurity::joinChannelWithPSK(const char* name, const char* psk)
@@ -434,4 +445,94 @@ void NetworkSecurity::testHashGeneration() {
     Serial.printf("  Active Hash: 0x%08X\n", activeHash);
     
     Serial.println("=============================================\n");
+}
+
+// ===== NUEVAS FUNCIONES CRYPTO INTEGRATION =====
+
+/**
+ * Configurar CryptoEngine con la PSK del canal activo
+ * Patrón copiado de Meshtastic Channels.cpp::setCrypto()
+ */
+bool NetworkSecurity::setCryptoForActiveChannel()
+{
+    if (activeChannelIndex < 0 || activeChannelIndex >= (int)channels.size()) {
+        Serial.println("[NETWORK] No active channel for crypto setup");
+        if (crypto) {
+            crypto->setKey(0, nullptr);  // Disable crypto
+        }
+        return false;
+    }
+    
+    const ChannelSettings& activeChannel = channels[activeChannelIndex];
+    
+    if (activeChannel.psk.size == 0) {
+        Serial.printf("[NETWORK] Channel '%s' has no PSK, disabling crypto\n", activeChannel.name);
+        if (crypto) {
+            crypto->setKey(0, nullptr);  // Disable crypto
+        }
+        return false;
+    }
+    
+    // Configurar crypto engine con la PSK del canal activo
+    if (crypto) {
+        crypto->setKey(activeChannel.psk.size, (uint8_t*)activeChannel.psk.bytes);
+        Serial.printf("[NETWORK] Crypto configured for channel '%s' (AES%d)\n", 
+                     activeChannel.name, activeChannel.psk.size * 8);
+        return true;
+    } else {
+        Serial.println("[NETWORK] ERROR: Global crypto engine not initialized");
+        return false;
+    }
+}
+
+/**
+ * Obtener PSK del canal activo
+ * Útil para verificaciones y debug
+ */
+const uint8_t* NetworkSecurity::getActiveChannelKey()
+{
+    if (activeChannelIndex < 0 || activeChannelIndex >= (int)channels.size()) {
+        return nullptr;
+    }
+    
+    const ChannelSettings& activeChannel = channels[activeChannelIndex];
+    return (activeChannel.psk.size > 0) ? activeChannel.psk.bytes : nullptr;
+}
+
+/**
+ * Obtener tamaño de PSK del canal activo
+ */
+size_t NetworkSecurity::getActiveChannelKeySize()
+{
+    if (activeChannelIndex < 0 || activeChannelIndex >= (int)channels.size()) {
+        return 0;
+    }
+    
+    return channels[activeChannelIndex].psk.size;
+}
+
+/**
+ * Verificar si el canal activo tiene encriptación habilitada
+ */
+bool NetworkSecurity::isCryptoEnabled()
+{
+    return (getActiveChannelKeySize() > 0);
+}
+
+/**
+ * Auto-configurar crypto cuando se cambia de canal
+ * Llamar automáticamente desde joinChannel()
+ */
+void NetworkSecurity::autoConfigureCrypto()
+{
+    if (!initialized) {
+        Serial.println("[NETWORK] Auto-crypto: Network not initialized");
+        return;
+    }
+    
+    if (setCryptoForActiveChannel()) {
+        Serial.printf("[NETWORK] Auto-crypto: Enabled for channel '%s'\n", getActiveChannelName());
+    } else {
+        Serial.println("[NETWORK] Auto-crypto: Disabled (no PSK or no channel)");
+    }
 }

@@ -217,6 +217,12 @@ public:
      */
     static void testHashGeneration();
 
+    static bool setCryptoForActiveChannel();
+    static const uint8_t* getActiveChannelKey();
+    static size_t getActiveChannelKeySize();
+    static bool isCryptoEnabled();
+    static void autoConfigureCrypto();
+
 private:
     static std::vector<ChannelSettings> channels;
     static int activeChannelIndex;

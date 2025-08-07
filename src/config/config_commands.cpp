@@ -9,6 +9,8 @@
 #include "config_commands.h"
 #include <WiFi.h>
 #include "../network/network_security.h"
+#include "../lora/lora_types.h"        // Para LoRaPacket, MSG_GPS_DATA, LORA_BROADCAST_ADDR
+#include "../network/crypto_engine.h"
 
 /*
  * MANEJADORES DE COMANDOS DE CONFIGURACIÓN
@@ -975,4 +977,99 @@ void ConfigManager::handleNetworkDelete(String channelName) {
 String ConfigManager::getActiveChannelName() {
     NetworkSecurity::init();
     return String(NetworkSecurity::getActiveChannelName());
+}
+
+void ConfigManager::handleTestEncrypt() {
+    Serial.println("\n[TEST] === ENCRYPTION VERIFICATION ===");
+    
+    // Verificar estado del sistema
+    Serial.printf("[TEST] Active channel: %s\n", NetworkSecurity::getActiveChannelName());
+    Serial.printf("[TEST] Channel hash: 0x%08X\n", NetworkSecurity::getHash());
+    Serial.printf("[TEST] Crypto enabled: %s\n", NetworkSecurity::isCryptoEnabled() ? "YES" : "NO");
+    Serial.printf("[TEST] Key size: %d bytes\n", NetworkSecurity::getActiveChannelKeySize());
+    
+    if (crypto) {
+        Serial.printf("[TEST] CryptoEngine key size: %d bytes\n", crypto->getKeySize());
+    } else {
+        Serial.println("[TEST] ERROR: Global crypto engine not initialized");
+        return;
+    }
+    
+    // Test data para encriptar
+    const char* testData = "TEST_GPS_DATA_123456";
+    uint8_t testPayload[32];
+    strncpy((char*)testPayload, testData, sizeof(testPayload) - 1);
+    testPayload[31] = '\0';
+    
+    size_t payloadLength = strlen(testData);
+    
+    Serial.printf("[TEST] Original payload: '%s' (%d bytes)\n", testData, payloadLength);
+    
+    // Mostrar payload original en hex
+    Serial.print("[TEST] Original hex: ");
+    for (size_t i = 0; i < payloadLength; i++) {
+        Serial.printf("%02X ", testPayload[i]);
+    }
+    Serial.println();
+    
+    // Crear un packet de test
+    LoRaPacket testPacket = {};
+    testPacket.messageType = MSG_GPS_DATA;
+    testPacket.sourceID = 999;  // ID de test
+    testPacket.destinationID = LORA_BROADCAST_ADDR;
+    testPacket.hops = 0;
+    testPacket.maxHops = 3;
+    testPacket.packetID = 12345;  // ID de test
+    testPacket.channelHash = NetworkSecurity::getHash();
+    testPacket.payloadLength = payloadLength;
+    
+    // Copiar payload original
+    memcpy(testPacket.payload, testPayload, payloadLength);
+    
+    Serial.printf("[TEST] Packet created with channel hash: 0x%08X\n", testPacket.channelHash);
+    
+    // Aplicar encriptación usando la misma lógica que sendPacket()
+    if (NetworkSecurity::isCryptoEnabled()) {
+        Serial.println("[TEST] Applying encryption...");
+        
+        NetworkSecurity::setCryptoForActiveChannel();
+        
+        if (crypto && crypto->getKeySize() > 0) {
+            crypto->encrypt(testPacket.sourceID, testPacket.packetID, 
+                           testPacket.payloadLength, testPacket.payload);
+            
+            Serial.println("[TEST] Encryption applied successfully");
+            
+            // Mostrar payload encriptado en hex
+            Serial.print("[TEST] Encrypted hex: ");
+            for (size_t i = 0; i < payloadLength; i++) {
+                Serial.printf("%02X ", testPacket.payload[i]);
+            }
+            Serial.println();
+            
+            // Verificar que el payload cambió
+            bool changed = false;
+            for (size_t i = 0; i < payloadLength; i++) {
+                if (testPacket.payload[i] != testPayload[i]) {
+                    changed = true;
+                    break;
+                }
+            }
+            
+            if (changed) {
+                Serial.println("[TEST] SUCCESS: Payload was encrypted (different from original)");
+                Serial.println("[TEST] ENCRYPTION INTEGRATION IS WORKING!");
+            } else {
+                Serial.println("[TEST] FAILURE: Payload was NOT encrypted (same as original)");
+            }
+            
+        } else {
+            Serial.println("[TEST] FAILURE: Crypto engine not ready");
+        }
+    } else {
+        Serial.println("[TEST] No encryption applied (no PSK configured)");
+        Serial.println("[TEST] TIP: Use NETWORK_CREATE <channel_name> to create a channel first");
+    }
+    
+    Serial.println("[TEST] ================================\n");
 }

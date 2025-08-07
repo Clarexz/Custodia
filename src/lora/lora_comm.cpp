@@ -5,6 +5,8 @@
  */
 
 #include "../lora.h"
+#include "../network/network_security.h"
+#include "../network/crypto_engine.h"
 
 /*
  * ENVÍO DE DATOS GPS (sin cambios)
@@ -51,13 +53,33 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
     packet.messageType = msgType;
     packet.sourceID = deviceID;
     packet.destinationID = destinationID;
-    packet.hops = 0;  // Packet original
+    packet.hops = 0;
     packet.maxHops = MESHTASTIC_MAX_HOPS;  // Máximo saltos
     packet.packetID = ++packetCounter;
+    // NUEVO: Channel hash population
+    packet.channelHash = NetworkSecurity::getHash();
+    if (configManager.isAdminMode()) {
+        Serial.printf("[LoRa] Using channel hash: 0x%08X\n", packet.channelHash);
+    }
     packet.payloadLength = payloadLength;
     
     // Copiar payload
     memcpy(packet.payload, payload, payloadLength);
+
+    // NUEVO: Encryption integration
+    if (NetworkSecurity::isCryptoEnabled()) {
+        NetworkSecurity::setCryptoForActiveChannel();
+        
+        if (crypto && crypto->getKeySize() > 0) {
+            crypto->encrypt(packet.sourceID, packet.packetID, 
+                        packet.payloadLength, packet.payload);
+            
+            if (configManager.isAdminMode()) {
+                Serial.printf("[LoRa] Payload encrypted (%d bytes) for channel '%s'\n",
+                            packet.payloadLength, NetworkSecurity::getActiveChannelName());
+            }
+        }
+    }
     
     // Calcular checksum
     packet.checksum = calculateChecksum(&packet);
