@@ -103,10 +103,18 @@ bool NetworkSecurity::createChannel(const char* name)
 
 bool NetworkSecurity::createChannelWithPSK(const char* name, const char* psk)
 {
-    if (!name || strlen(name) == 0 || strlen(name) >= 12) {
-        Serial.println("[NETWORK] Invalid channel name");
+    if (!name || strlen(name) == 0 || strlen(name) >= 31) {  // FIX: >= 31 en lugar de >= 12
+        Serial.printf("[NETWORK] Invalid channel name (must be 1-30 chars, got %d)\n", strlen(name ? name : ""));
         return false;
     }
+    
+    if (!psk || strlen(psk) == 0) {
+        Serial.println("[NETWORK] Invalid PSK (empty)");
+        return false;
+    }
+    
+    // Debug
+    Serial.printf("[NETWORK] Creating channel '%s' with PSK '%s'\n", name, psk);
     
     // Verificar si ya existe
     if (findChannelByName(name) >= 0) {
@@ -121,10 +129,13 @@ bool NetworkSecurity::createChannelWithPSK(const char* name, const char* psk)
     // Decodificar PSK proporcionada
     size_t pskLength = base64ToPSK(psk, newChannel.psk.bytes, 32);
     if (pskLength == 0) {
-        Serial.println("[NETWORK] Invalid PSK format");
+        Serial.printf("[NETWORK] Invalid PSK format: '%s'\n", psk);
         return false;
     }
     newChannel.psk.size = pskLength;
+    
+    // Debug del PSK decodificado
+    Serial.printf("[NETWORK] PSK decoded: %d bytes\n", pskLength);
     
     // Generar ID basado en nombre (algoritmo de Meshtastic)
     newChannel.id = 0;
@@ -140,14 +151,19 @@ bool NetworkSecurity::createChannelWithPSK(const char* name, const char* psk)
     
     // Validar y agregar
     if (!validateChannelSettings(&newChannel)) {
-        Serial.println("[NETWORK] Channel settings are invalid");
+        Serial.println("[NETWORK] Channel settings validation failed");
         return false;
     }
     
     channels.push_back(newChannel);
-    saveChannelsToEEPROM();
     
-    Serial.printf("[NETWORK] Created channel '%s' with custom PSK\n", name);
+    // Auto-activar si es el primer canal
+    if (activeChannelIndex == -1) {
+        activeChannelIndex = 0;
+        Serial.printf("[NETWORK] Automatically activated first channel: %s\n", name);
+    }
+    
+    Serial.printf("[NETWORK] Created channel '%s' with custom PSK (ID: %u)\n", name, newChannel.id);
     return true;
 }
 

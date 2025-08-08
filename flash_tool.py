@@ -1,53 +1,58 @@
 #!/usr/bin/env python3
-"""
-Custom Meshtastic Flash Tool
-"""
+# -*- coding: utf-8 -*-
 
-import sys
-import subprocess
-import time
 import argparse
+import sys
+import time
+import subprocess
+import importlib.util
 
 def check_and_install_pyserial():
-    """Install pyserial if not available"""
-    try:
-        import serial
-        import serial.tools.list_ports
-        return True
-    except ImportError:
-        print("Instalando pyserial...")
+    """Check if pyserial is installed, install if not"""
+    if importlib.util.find_spec("serial") is None:
+        print("pyserial no está instalado. Instalando...")
         try:
-            subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyserial'], 
-                          check=True, capture_output=True)
-            print("pyserial instalado correctamente")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "pyserial"])
+            print("pyserial instalado exitosamente")
             return True
         except subprocess.CalledProcessError:
             print("ERROR: No se pudo instalar pyserial")
-            print("Solucion: pip install pyserial")
+            print("Instale manualmente: pip install pyserial")
             return False
-        except FileNotFoundError:
-            print("ERROR: Python no encontrado en PATH")
-            print("Instale Python desde python.org e incluya en PATH")
-            return False
+    return True
 
 def detect_port():
-    """Simple port detection"""
-    import serial.tools.list_ports
-    ports = serial.tools.list_ports.comports()
-    
-    # Look for common ESP32 patterns
-    for port in ports:
-        device_lower = port.device.lower()
-        desc_lower = port.description.lower()
+    """Detect ESP32-S3 port automatically"""
+    try:
+        import serial.tools.list_ports
         
-        if any(pattern in device_lower for pattern in ['usbmodem', 'usbserial', 'ttyusb', 'ttyacm']):
-            return port.device
-        if any(pattern in desc_lower for pattern in ['cp210', 'ch340', 'silicon labs']):
-            return port.device
-    
-    # If no pattern match, use first available
-    if ports:
-        return ports[0].device
+        # Common ESP32-S3 identifiers
+        esp32_identifiers = [
+            'CP210',  # Silicon Labs CP210x
+            'CH340',  # WCH CH340
+            'FTDI',   # FTDI chips
+            'USB',    # Generic USB serial
+            '10C4:EA60',  # CP210x VID:PID
+            '1A86:7523',  # CH340 VID:PID
+        ]
+        
+        ports = serial.tools.list_ports.comports()
+        for port in ports:
+            port_info = f"{port.device} {port.description} {port.hwid}".upper()
+            
+            # Check for ESP32-S3 identifiers
+            for identifier in esp32_identifiers:
+                if identifier in port_info:
+                    return port.device
+        
+        # If no specific match, return first available port
+        if ports:
+            return ports[0].device
+            
+    except ImportError:
+        pass  # pyserial not available yet
+    except Exception as e:
+        print(f"Error detecting port: {e}")
     
     return None
 
@@ -74,8 +79,152 @@ def find_platformio():
     
     return None
 
+def get_psk_from_device(ser, channel_name):
+    try:
+        print("Obteniendo PSK del dispositivo...")
+        
+        # Limpiar buffer
+        ser.reset_input_buffer()
+        time.sleep(0.5)
+        
+        # Entrar a modo CONFIG
+        ser.write(b'CONFIG\r\n')
+        time.sleep(2)
+        
+        # Leer respuesta de CONFIG
+        config_response = ""
+        for _ in range(10):
+            if ser.in_waiting > 0:
+                config_response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+            time.sleep(0.3)
+        
+        # Verificar entrada a CONFIG
+        config_success = any(phrase in config_response for phrase in [
+            'Entrando en modo configuración',
+            'modo configuración', 
+            'config',
+            'CONFIG'
+        ])
+        
+        if not config_success:
+            print("No se pudo entrar a modo configuración")
+            return None
+        
+        # Ejecutar NETWORK_SHOW_PSK
+        ser.write(b'NETWORK_SHOW_PSK\r\n')
+        time.sleep(3)
+        
+        # Leer respuesta del comando PSK
+        psk_response = ""
+        for _ in range(20):
+            if ser.in_waiting > 0:
+                chunk = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+                psk_response += chunk
+            time.sleep(0.4)
+            
+            # Buscar indicadores de respuesta completa
+            if any(indicator in psk_response for indicator in ['PSK:', '====', 'bytes']):
+                time.sleep(1)
+                break
+        
+        # Extraer PSK
+        extracted_psk = extract_psk_from_response(psk_response)
+        
+        # Regresar a modo operativo
+        ser.write(b'START\r\n')
+        time.sleep(2)
+        
+        # Leer respuesta de START (sin mostrar)
+        for _ in range(8):
+            if ser.in_waiting > 0:
+                ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+            time.sleep(0.3)
+        
+        return extracted_psk
+        
+    except Exception as e:
+        print(f"Error obteniendo PSK: {e}")
+        # Intentar regresar a START en caso de error
+        try:
+            ser.write(b'START\r\n')
+            time.sleep(1)
+        except:
+            pass
+        return None
+
+def extract_psk_from_response(response):
+    """
+    Extraer PSK de la respuesta - VERSIÓN LIMPIA
+    """
+    try:
+        lines = response.split('\n')
+        
+        # Buscar patrones de PSK
+        psk_patterns = ['PSK:', '[INFO] PSK:', 'Comando:']
+        
+        for line in lines:
+            line = line.strip()
+            
+            for pattern in psk_patterns:
+                if pattern in line:
+                    # Extraer PSK
+                    psk_start = line.find(pattern) + len(pattern)
+                    psk_part = line[psk_start:].strip()
+                    
+                    # Si contiene "--psk", extraer después de eso
+                    if '--psk' in psk_part:
+                        psk_start = psk_part.find('--psk') + 5
+                        psk_part = psk_part[psk_start:].strip()
+                    
+                    # Limpiar PSK
+                    psk = psk_part.replace('\r', '').replace('\n', '').strip()
+                    
+                    # Validar PSK (Base64)
+                    if len(psk) > 15 and ('=' in psk or '+' in psk or '/' in psk):
+                        return psk
+        
+        # Fallback: buscar cualquier string Base64
+        import re
+        base64_pattern = r'[A-Za-z0-9+/]{20,}={0,2}'
+        
+        for line in lines:
+            matches = re.findall(base64_pattern, line)
+            for match in matches:
+                if len(match) > 20:
+                    return match
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+# TAMBIÉN LIMPIAR show_psk_copy_option():
+
+def show_psk_copy_option(ser, channel_name):
+    print("\n" + "="*60)
+    print("DISPOSITIVO LISTO PARA USAR")
+    print("="*60)
+    
+    while True:
+        response = input("¿Ver PSK para usar en otro dispositivo? (Y/N): ").strip().upper()
+        if response in ['Y', 'YES', 'S', 'SI']:
+            # Obtener PSK del dispositivo
+            psk = get_psk_from_device(ser, channel_name)
+            if psk:
+                print(f"\n--psk {psk}")
+                print(f"\nCopia y agrega al final de tu próximo comando.")
+            else:
+                print("\nNo se pudo obtener PSK automáticamente")
+                print("   Usa: config> NETWORK_SHOW_PSK para verlo manualmente")
+            break
+        elif response in ['N', 'NO']:
+            print("PSK no mostrado. Puedes verlo después con: config> NETWORK_SHOW_PSK")
+            break
+        else:
+            print("Por favor responde Y o N")
+
 def main():
-    print("Custodia Flash Tool v2.0 - Con Network Security")
+    print("Custodia Flash Tool v2.2")
     
     # Check Python and install pyserial
     if not check_and_install_pyserial():
@@ -93,7 +242,9 @@ def main():
     parser.add_argument('-mode', required=True, help='Data mode')
     parser.add_argument('-radio', required=True, help='Radio profile')
     parser.add_argument('-hops', type=int, default=3, help='Max hops (default: 3)')
-    parser.add_argument('--channel', default='default', help='Network security channel name (default: default)')
+    parser.add_argument('-channel', default='default', help='Network security channel name (default: default)')
+    # NUEVO: Argumento --psk
+    parser.add_argument('-psk', help='Pre-shared key (Base64). If provided, uses specific PSK instead of auto-generated')
     
     if len(sys.argv) == 1:
         parser.print_help()
@@ -166,9 +317,10 @@ def main():
     
     print(f"Usando puerto para configuracion: {port}")
     
+    print(f"[DEBUG] PSK proporcionado: '{args.psk}'")
     # Build configuration command - try both variants
-    config_cmd_q = f"Q_CONFIG {args.role},{args.id},{args.gps},{args.region},{args.mode},{args.radio},{args.hops},{args.channel}"
-    config_cmd_alt = f"CONFIG {args.role},{args.id},{args.gps},{args.region},{args.mode},{args.radio},{args.hops}"
+    config_cmd_q = f"Q_CONFIG {args.role},{args.id},{args.gps},{args.region},{args.mode},{args.radio},{args.hops},{args.channel},{args.psk}"
+    print(f"[DEBUG] Comando Q_CONFIG: '{config_cmd_q}'")
     
     # Send configuration
     try:
@@ -186,24 +338,22 @@ def main():
             response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
             time.sleep(0.1)
         
-        # If Q_CONFIG failed, try alternative
-        if 'comando desconocido' in response.lower() or 'unknown command' in response.lower():
-            print("Q_CONFIG no reconocido, probando comando alternativo...")
-            ser.write((config_cmd_alt + '\r\n').encode())
-            time.sleep(3)
-            
-            # Read new response
-            while ser.in_waiting > 0:
-                response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
-                time.sleep(0.1)
-        
         config_success = any(word in response.lower() for word in ['completada exitosamente', 'configuracion guardada', '[ok]'])
         
         if config_success and args.channel and args.channel != 'default':
             print(f"\n[3/3] Configurando canal de seguridad: {args.channel}")
             
-            # Create network channel
-            channel_cmd = f"NETWORK_CREATE {args.channel}"
+            # LÓGICA CORREGIDA: Determinar comando según si se proporciona PSK
+            if args.psk:
+                channel_cmd = f"NETWORK_CREATE {args.channel} PSK {args.psk}"
+                print(f"Usando PSK proporcionado para canal '{args.channel}'")
+                print(f"[DEBUG] Comando NETWORK_CREATE: '{channel_cmd}'")
+            else:
+                channel_cmd = f"NETWORK_CREATE {args.channel}"
+                print(f"Generando PSK aleatorio para canal '{args.channel}'")
+                print(f"[DEBUG] Comando NETWORK_CREATE: '{channel_cmd}'")
+            
+            
             print(f"Enviando: {channel_cmd}")
             ser.write((channel_cmd + '\r\n').encode())
             time.sleep(2)  # Wait for channel creation
@@ -214,12 +364,36 @@ def main():
                 channel_response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
                 time.sleep(0.1)
             
-            if "[OK]" in channel_response or "creado exitosamente" in channel_response:
-                print(f"Canal '{args.channel}' creado exitosamente")
+            # DETECCIÓN MEJORADA: Más patterns de éxito
+            success_patterns = [
+                "[OK]", "creado exitosamente", "Canal", "creado", 
+                "exitosamente", "OK", "created", "success", "configurado"
+            ]
+            
+            channel_success = any(pattern.lower() in channel_response.lower() 
+                                 for pattern in success_patterns)
+            
+            # También considerar éxito si hay respuesta substantiva
+            has_substantial_response = len(channel_response.strip()) > 10
+            
+            if channel_success or has_substantial_response:
+                print(f"Canal '{args.channel}' configurado")
                 print("Canal guardado automáticamente en EEPROM")
+                
+                # FUNCIONALIDAD PRINCIPAL: Si NO se proporcionó PSK, mostrar opción
+                if not args.psk:
+                    show_psk_copy_option(ser, args.channel)
             else:
-                print(f"Advertencia: Canal {args.channel} podría ya existir")
-                print("  Esto es normal si re-flashea el mismo dispositivo")
+                print(f"Respuesta inesperada del canal {args.channel}")
+                print(f"Respuesta: '{channel_response}'")
+                print("Verificar manualmente con: config> NETWORK_LIST")
+                
+                # Aún así, intentar mostrar PSK si no se proporcionó
+                if not args.psk:
+                    print("\n¿Intentar obtener PSK de todas formas? (Y/N): ", end="")
+                    try_anyway = input().strip().upper()
+                    if try_anyway in ['Y', 'YES', 'S', 'SI']:
+                        show_psk_copy_option(ser, args.channel)
             
             # Send START command to begin operation
             print("Iniciando dispositivo...")
@@ -263,7 +437,6 @@ def main():
             print("2. Ejecutar: STATUS")
             print(f"3. Si no configurado, enviar manualmente:")
             print(f"   {config_cmd_q}")
-            print(f"   O alternativamente: {config_cmd_alt}")
             if args.channel and args.channel != 'default':
                 print(f"4. Configurar canal de seguridad:")
                 print(f"   NETWORK_CREATE {args.channel}")

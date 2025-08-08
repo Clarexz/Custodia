@@ -174,6 +174,12 @@ void ConfigManager::processSerialInput() {
     }
     else if (input.startsWith("NETWORK_DELETE ")) {
         handleNetworkDelete(input.substring(15));
+    } // NUEVO: Comando NETWORK_SHOW_PSK
+    else if (input == "NETWORK_SHOW_PSK") {
+        handleNetworkShowPSK();
+    }
+    else if (input.startsWith("NETWORK_TEST_PSK ")) {
+        handleNetworkTestPSK(input.substring(17));
     }
     else if (input == "TEST_ENCRYPT") {
         handleTestEncrypt();
@@ -400,7 +406,7 @@ void ConfigManager::printConfig() {
 
 void ConfigManager::printWelcome() {
     Serial.println("\n==================================================");
-    Serial.println("    CUSTOM MESHTASTIC GPS TRACKER v" + String(config.version));
+    Serial.println("    CUSTODIA v" + String(config.version));
     Serial.println("    ESP32-S3 + LoRa SX1262");
     Serial.println("==================================================");
 }

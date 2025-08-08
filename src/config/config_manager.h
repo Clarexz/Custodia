@@ -192,6 +192,8 @@ public:
     void handleTestEncrypt();
     void handleTestDecrypt();
     void handleStats();
+    void handleNetworkShowPSK();
+    void handleNetworkTestPSK(String params);
     // ==========================================================
     
     // Radio Profiles handlers

@@ -737,6 +737,10 @@ void ConfigManager::handleNetworkCreate(String params) {
     params.trim();
     int pskIndex = params.indexOf(" PSK ");
     
+    // Debug del parsing
+    Serial.println("[DEBUG] Full command: '" + params + "'");
+    Serial.println("[DEBUG] PSK index: " + String(pskIndex));
+    
     // Inicializar NetworkSecurity si no está inicializado
     NetworkSecurity::init();
     
@@ -759,21 +763,31 @@ void ConfigManager::handleNetworkCreate(String params) {
                 
                 Serial.println("[OK] Canal '" + params + "' creado exitosamente");
                 Serial.println("[INFO] PSK: " + String(pskBase64));
-                Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);  // ← HASH REAL
+                Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);
             }
         } else {
             Serial.println("[ERROR] No se pudo crear el canal '" + params + "'");
         }
         
     } else {
-        // Nombre + PSK específica
+        // CORREGIDO: Nombre + PSK específica
         String channelName = params.substring(0, pskIndex);
-        String pskString = params.substring(pskIndex + 5);
+        // BUG FIX: Cambiar de +5 a +4 para saltar exactamente " PSK"
+        String pskString = params.substring(pskIndex + 4);
         channelName.trim();
         pskString.trim();
         
+        // Debug del parsing
+        Serial.println("[DEBUG] Channel name: '" + channelName + "'");
+        Serial.println("[DEBUG] PSK string: '" + pskString + "'");
+        
         if (channelName.length() == 0 || channelName.length() > MAX_CHANNEL_NAME_LENGTH) {
             Serial.println("[ERROR] Nombre de canal inválido");
+            return;
+        }
+        
+        if (pskString.length() == 0) {
+            Serial.println("[ERROR] PSK no puede estar vacío");
             return;
         }
         
@@ -784,11 +798,16 @@ void ConfigManager::handleNetworkCreate(String params) {
             if (NetworkSecurity::getChannelInfo(channelName.c_str(), &newChannel)) {
                 uint32_t channelHash = NetworkSecurity::generateHash(&newChannel);
                 
-                Serial.println("[OK] Canal '" + channelName + "' creado con PSK específica");
-                Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);  // ← HASH REAL
+                char actualPsk[64];
+                NetworkSecurity::pskToBase64(newChannel.psk.bytes, newChannel.psk.size, actualPsk, sizeof(actualPsk));
+                
+                Serial.println("[OK] Canal '" + channelName + "' creado con PSK específico");
+                Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);
+                Serial.println("[INFO] PSK verificado: " + String(actualPsk));
             }
         } else {
-            Serial.println("[ERROR] No se pudo crear el canal con PSK específica");
+            Serial.println("[ERROR] No se pudo crear el canal con PSK específico");
+            Serial.println("[ERROR] Verificar formato PSK (debe ser Base64 válido)");
         }
     }
     
@@ -1198,4 +1217,70 @@ void ConfigManager::handleStats() {
     Serial.println("Fallos de decriptación: " + String(stats.decryptionFailures));
     
     Serial.println("========================================");
+}
+
+void ConfigManager::handleNetworkShowPSK() {
+    // Inicializar NetworkSecurity si no está inicializado
+    NetworkSecurity::init();
+    
+    // Verificar que hay canal activo
+    if (NetworkSecurity::getActiveChannelIndex() < 0) {
+        Serial.println("[ERROR] No hay canal activo");
+        Serial.println("[INFO] Use NETWORK_CREATE o NETWORK_JOIN primero");
+        return;
+    }
+    
+    // Obtener información del canal activo
+    const char* channelName = NetworkSecurity::getActiveChannelName();
+    if (!channelName || strlen(channelName) == 0) {
+        Serial.println("[ERROR] Canal activo no válido");
+        return;
+    }
+    
+    // Obtener configuración del canal
+    ChannelSettings channelInfo;
+    if (!NetworkSecurity::getChannelInfo(channelName, &channelInfo)) {
+        Serial.println("[ERROR] No se pudo obtener información del canal");
+        return;
+    }
+    
+    // Convertir PSK a Base64
+    char pskBase64[64];
+    NetworkSecurity::pskToBase64(channelInfo.psk.bytes, channelInfo.psk.size, pskBase64, sizeof(pskBase64));
+    
+    // Mostrar información del PSK
+    Serial.println("========== PSK INFO ==========");
+    Serial.printf("Canal: %s\n", channelName);
+    Serial.printf("PSK: %s\n", pskBase64);
+    Serial.printf("Hash: 0x%08X\n", NetworkSecurity::getHash());
+    Serial.printf("Tamaño: %d bytes\n", channelInfo.psk.size);
+    Serial.println("==============================");
+    
+    Serial.println("[INFO] Use este PSK para configurar otros dispositivos");
+    Serial.printf("[INFO] Comando: --psk %s\n", pskBase64);
+}
+
+void ConfigManager::handleNetworkTestPSK(String params) {
+    params.trim();
+    
+    Serial.println("=== TEST PSK PARSING ===");
+    Serial.println("Input: '" + params + "'");
+    
+    int pskIndex = params.indexOf(" PSK ");
+    Serial.println("PSK index: " + String(pskIndex));
+    
+    if (pskIndex != -1) {
+        String channelName = params.substring(0, pskIndex);
+        String pskString1 = params.substring(pskIndex + 4);  // +4
+        String pskString2 = params.substring(pskIndex + 5);  // +5
+        
+        channelName.trim();
+        pskString1.trim();
+        pskString2.trim();
+        
+        Serial.println("Channel: '" + channelName + "'");
+        Serial.println("PSK (+4): '" + pskString1 + "'");
+        Serial.println("PSK (+5): '" + pskString2 + "'");
+    }
+    Serial.println("========================");
 }
