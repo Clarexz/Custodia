@@ -56,6 +56,42 @@ enum LoRaRegion {
 #define FREQ_AS_MHZ     433.0f  // Asia
 #define FREQ_JP_MHZ     920.0f  // Japón
 
+// Constantes para EEPROM storage de networks
+#define NETWORK_COUNT_KEY      "net_count"
+#define ACTIVE_NETWORK_KEY     "active_net"
+#define NETWORK_NAME_PREFIX    "net_name_"    // net_name_0, net_name_1, etc.
+#define NETWORK_PASS_PREFIX    "net_pass_"    // net_pass_0, net_pass_1, etc.
+#define NETWORK_HASH_PREFIX    "net_hash_"    // net_hash_0, net_hash_1, etc.
+#define MAX_NETWORKS           10             // Máximo networks por dispositivo
+
+// Estructura simple para networks
+struct SimpleNetwork {
+    String name;        // Convertido a uppercase automáticamente
+    String password;    // Convertido a uppercase, 8-32 chars
+    uint32_t hash;      // hash(name + password)
+    bool active;        // true si es la network activa
+    
+    // Constructor por defecto
+    SimpleNetwork() : hash(0), active(false) {}
+    
+    // Constructor con parámetros
+    SimpleNetwork(String n, String p) : name(n), password(p), active(false) {
+        name.toUpperCase();
+        password.toUpperCase();
+        hash = generateHash();
+    }
+    
+    // Generar hash de la network
+    uint32_t generateHash() {
+        String combined = name + password;
+        uint32_t h = 0;
+        for (int i = 0; i < combined.length(); i++) {
+            h = h * 31 + combined.charAt(i);
+        }
+        return h;
+    }
+};
+
 /*
  * ESTRUCTURAS DE DATOS
  */
@@ -86,6 +122,24 @@ private:
     
     // Estado actual del sistema
     SystemState currentState;
+
+    // ===== NUEVAS VARIABLES PARA NETWORKS =====
+    // Lista de networks disponibles
+    SimpleNetwork networks[MAX_NETWORKS];
+    
+    // Número actual de networks guardadas
+    uint8_t networkCount;
+    
+    // Índice de la network actualmente activa (-1 si ninguna)
+    int8_t activeNetworkIndex;
+    
+    // ===== NUEVOS MÉTODOS PRIVADOS PARA NETWORKS =====
+    void loadNetworks();           // Cargar networks desde EEPROM
+    void saveNetworks();           // Guardar networks a EEPROM
+    bool isValidNetworkName(String name);    // Validar nombre de network
+    bool isValidPassword(String password);   // Validar password
+    int findNetworkByName(String name);      // Buscar network por nombre
+    String generateRandomPassword();         // Generar password aleatoria
     
     /*
      * MÉTODOS PRIVADOS
@@ -124,6 +178,33 @@ public:
     void setGpsInterval(uint16_t interval);
     void setDataMode(DataDisplayMode mode);
     String getCurrentDataModeString();
+
+    /*
+     * ===== NUEVOS MÉTODOS PÚBLICOS PARA NETWORKS =====
+     */
+    
+    // Obtener network activa actual
+    SimpleNetwork* getActiveNetwork();
+    
+    // Obtener hash de la network activa (para packets LoRa)
+    uint32_t getActiveNetworkHash();
+    
+    // Verificar si hay una network activa
+    bool hasActiveNetwork();
+    
+    // Obtener número de networks guardadas
+    uint8_t getNetworkCount() { return networkCount; }
+    
+    // Obtener network por índice (para listar)
+    SimpleNetwork* getNetwork(uint8_t index);
+    
+    /*
+     * MÉTODOS DE COMANDOS (manejadores)
+     * Estos serán implementados en config_commands.cpp
+     */
+    void handleNetworkCreate(String params);
+    void handleNetworkJoin(String params);
+    void handleNetworkList();
     
     // NUEVOS: Radio Profiles getters/setters
     RadioProfile getRadioProfile() { return config.radioProfile; }

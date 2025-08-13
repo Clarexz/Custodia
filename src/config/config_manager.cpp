@@ -28,6 +28,15 @@ ConfigManager configManager;
  */
 ConfigManager::ConfigManager() {
     currentState = STATE_BOOT;
+
+    // ===== INICIALIZAR VARIABLES DE NETWORKS =====
+    networkCount = 0;
+    activeNetworkIndex = -1;  // -1 significa "ninguna network activa"
+    
+    // Inicializar array de networks (opcional, pero buena práctica)
+    for (int i = 0; i < MAX_NETWORKS; i++) {
+        networks[i] = SimpleNetwork();  // Constructor por defecto
+    }
 }
 
 /*
@@ -42,6 +51,9 @@ void ConfigManager::begin() {
     
     // Cargar configuración existente desde EEPROM
     loadConfig();
+
+    // Cargar networks desde EEPROM
+    loadNetworks();
     
     // Mostrar mensaje de bienvenida con información del sistema
     printWelcome();
@@ -181,6 +193,16 @@ void ConfigManager::processSerialInput() {
             Serial.println("[ERROR] Configuración inválida. Configure el dispositivo primero.");
         }
     }
+    // ========== NUEVOS COMANDOS DE NETWORKS ==========
+    else if (input == "NETWORK_LIST") {
+        handleNetworkList();
+    }
+    else if (input.startsWith("NETWORK_CREATE ")) {
+        handleNetworkCreate(input.substring(15));
+    }
+    else if (input.startsWith("NETWORK_JOIN ")) {
+        handleNetworkJoin(input.substring(13));
+    }
     else {
         Serial.println("[ERROR] Comando desconocido. Use 'HELP' para ver comandos disponibles.");
     }
@@ -229,6 +251,9 @@ void ConfigManager::saveConfig() {
     
     // NUEVO: Guardar Radio Profile
     preferences.putUChar("radioProfile", config.radioProfile);
+
+    //  GUARDAR NETWORKS 
+    saveNetworks();
     
     Serial.println("[OK] Configuración guardada exitosamente.");
 }
@@ -269,6 +294,187 @@ String ConfigManager::getCurrentDataModeString() {
 
 String ConfigManager::getRadioProfileName() {
     return radioProfileManager.getProfileName(config.radioProfile);
+}
+
+/*
+ * ===== IMPLEMENTACIÓN DE MÉTODOS PÚBLICOS PARA NETWORKS =====
+ */
+
+// Obtener network activa actual
+SimpleNetwork* ConfigManager::getActiveNetwork() {
+    if (activeNetworkIndex >= 0 && activeNetworkIndex < networkCount) {
+        return &networks[activeNetworkIndex];
+    }
+    return nullptr;  // No hay network activa
+}
+
+// Obtener hash de la network activa (para packets LoRa)
+uint32_t ConfigManager::getActiveNetworkHash() {
+    SimpleNetwork* activeNet = getActiveNetwork();
+    if (activeNet != nullptr) {
+        return activeNet->hash;
+    }
+    return 0;  // Hash por defecto si no hay network activa
+}
+
+// Verificar si hay una network activa
+bool ConfigManager::hasActiveNetwork() {
+    return (activeNetworkIndex >= 0 && activeNetworkIndex < networkCount);
+}
+
+// Obtener network por índice (para listar)
+SimpleNetwork* ConfigManager::getNetwork(uint8_t index) {
+    if (index < networkCount) {
+        return &networks[index];
+    }
+    return nullptr;  // Índice fuera de rango
+}
+
+/*
+ * ===== MÉTODOS PRIVADOS DE VALIDACIÓN =====
+ */
+
+// Validar nombre de network
+bool ConfigManager::isValidNetworkName(String name) {
+    // Eliminar espacios y convertir a uppercase
+    name.trim();
+    name.toUpperCase();
+    
+    // Verificar longitud (3-20 caracteres)
+    if (name.length() < 3 || name.length() > 20) {
+        return false;
+    }
+    
+    // Verificar que solo contenga caracteres alfanuméricos y guiones
+    for (int i = 0; i < name.length(); i++) {
+        char c = name.charAt(i);
+        if (!isAlphaNumeric(c) && c != '_' && c != '-') {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// Validar password
+bool ConfigManager::isValidPassword(String password) {
+    // Eliminar espacios y convertir a uppercase
+    password.trim();
+    password.toUpperCase();
+    
+    // Verificar longitud (8-32 caracteres)
+    if (password.length() < 8 || password.length() > 32) {
+        return false;
+    }
+    
+    // Verificar que solo contenga caracteres alfanuméricos
+    for (int i = 0; i < password.length(); i++) {
+        char c = password.charAt(i);
+        if (!isAlphaNumeric(c)) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// Buscar network por nombre (retorna índice o -1 si no se encuentra)
+int ConfigManager::findNetworkByName(String name) {
+    name.trim();
+    name.toUpperCase();
+    
+    for (int i = 0; i < networkCount; i++) {
+        if (networks[i].name.equals(name)) {
+            return i;
+        }
+    }
+    
+    return -1;  // No encontrada
+}
+
+// Generar password aleatoria (8 caracteres alfanuméricos)
+String ConfigManager::generateRandomPassword() {
+    String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    String password = "";
+    
+    // Usar millis() como semilla para mejor aleatoriedad
+    randomSeed(millis());
+    
+    for (int i = 0; i < 8; i++) {
+        password += chars.charAt(random(chars.length()));
+    }
+    
+    return password;
+}
+// Guardar networks a EEPROM
+void ConfigManager::saveNetworks() {
+    // Guardar contador de networks
+    preferences.putUChar(NETWORK_COUNT_KEY, networkCount);
+    
+    // Guardar índice de network activa
+    preferences.putChar(ACTIVE_NETWORK_KEY, activeNetworkIndex);
+    
+    // Guardar cada network
+    for (int i = 0; i < networkCount; i++) {
+        String nameKey = String(NETWORK_NAME_PREFIX) + String(i);
+        String passKey = String(NETWORK_PASS_PREFIX) + String(i);
+        String hashKey = String(NETWORK_HASH_PREFIX) + String(i);
+        
+        preferences.putString(nameKey.c_str(), networks[i].name);
+        preferences.putString(passKey.c_str(), networks[i].password);
+        preferences.putUInt(hashKey.c_str(), networks[i].hash);
+    }
+    
+    Serial.println("[Networks] Guardadas " + String(networkCount) + " networks en EEPROM.");
+}
+
+// Cargar networks desde EEPROM
+void ConfigManager::loadNetworks() {
+    // Cargar contador de networks
+    networkCount = preferences.getUChar(NETWORK_COUNT_KEY, 0);
+    
+    // Cargar índice de network activa
+    activeNetworkIndex = preferences.getChar(ACTIVE_NETWORK_KEY, -1);
+    
+    // Validar datos cargados
+    if (networkCount > MAX_NETWORKS) {
+        Serial.println("[Networks] ERROR: Contador inválido, reseteando networks.");
+        networkCount = 0;
+        activeNetworkIndex = -1;
+        return;
+    }
+    
+    if (activeNetworkIndex >= networkCount) {
+        Serial.println("[Networks] WARNING: Índice activo inválido, corrigiendo.");
+        activeNetworkIndex = networkCount > 0 ? 0 : -1;
+    }
+    
+    // Cargar cada network
+    for (int i = 0; i < networkCount; i++) {
+        String nameKey = String(NETWORK_NAME_PREFIX) + String(i);
+        String passKey = String(NETWORK_PASS_PREFIX) + String(i);
+        String hashKey = String(NETWORK_HASH_PREFIX) + String(i);
+        
+        networks[i].name = preferences.getString(nameKey.c_str(), "");
+        networks[i].password = preferences.getString(passKey.c_str(), "");
+        networks[i].hash = preferences.getUInt(hashKey.c_str(), 0);
+        networks[i].active = (i == activeNetworkIndex);
+        
+        // Validar que la network cargada es válida
+        if (networks[i].name.length() == 0 || networks[i].password.length() == 0) {
+            Serial.println("[Networks] ERROR: Network " + String(i) + " corrupta, reseteando.");
+            networkCount = 0;
+            activeNetworkIndex = -1;
+            return;
+        }
+    }
+    
+    if (networkCount > 0) {
+        Serial.println("[Networks] Cargadas " + String(networkCount) + " networks desde EEPROM.");
+        if (activeNetworkIndex >= 0) {
+            Serial.println("[Networks] Network activa: " + networks[activeNetworkIndex].name);
+        }
+    }
 }
 
 // ========================================================

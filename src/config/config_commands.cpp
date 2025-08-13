@@ -655,6 +655,216 @@ void ConfigManager::handleQuickConfig(String params) {
 }
 
 /*
+ * ===== COMANDOS DE NETWORKS =====
+ */
+
+void ConfigManager::handleNetworkList() {
+    Serial.println("========================================");
+    Serial.println("           NETWORKS GUARDADAS");
+    Serial.println("========================================");
+    
+    if (networkCount == 0) {
+        Serial.println("[INFO] No hay networks guardadas.");
+        Serial.println("[INFO] Use 'NETWORK_CREATE <nombre> [password]' para crear una.");
+        Serial.println("========================================");
+        return;
+    }
+    
+    // Mostrar cada network guardada
+    for (int i = 0; i < networkCount; i++) {
+        SimpleNetwork* net = &networks[i];
+        
+        // Indicador de network activa
+        String activeIndicator = net->active ? " [ACTIVA]" : "";
+        
+        Serial.println("Network " + String(i + 1) + ":" + activeIndicator);
+        Serial.println("  Nombre:   " + net->name);
+        Serial.println("  Password: " + net->password);
+        Serial.println("  Hash:     " + String(net->hash, HEX));
+        
+        if (i < networkCount - 1) {
+            Serial.println("  ----");
+        }
+    }
+    
+    Serial.println("========================================");
+    Serial.println("Total: " + String(networkCount) + "/" + String(MAX_NETWORKS) + " networks");
+    
+    // Mostrar network activa
+    if (hasActiveNetwork()) {
+        SimpleNetwork* active = getActiveNetwork();
+        Serial.println("Network activa: " + active->name);
+    } else {
+        Serial.println("Ninguna network activa");
+    }
+    
+    Serial.println("========================================");
+}
+
+void ConfigManager::handleNetworkCreate(String params) {
+    params.trim();
+    
+    // Verificar que no excedamos el límite de networks
+    if (networkCount >= MAX_NETWORKS) {
+        Serial.println("[ERROR] Máximo de " + String(MAX_NETWORKS) + " networks alcanzado.");
+        Serial.println("[INFO] Use 'NETWORK_LIST' para ver networks existentes.");
+        return;
+    }
+    
+    // Parsear parámetros: <nombre> [password]
+    int spaceIndex = params.indexOf(' ');
+    String name = "";
+    String password = "";
+    
+    if (spaceIndex > 0) {
+        // Hay password especificada
+        name = params.substring(0, spaceIndex);
+        password = params.substring(spaceIndex + 1);
+        password.trim();
+    } else {
+        // Solo nombre, generar password automática
+        name = params;
+        password = generateRandomPassword();
+        Serial.println("[INFO] Password auto-generada: " + password);
+    }
+    
+    name.trim();
+    
+    // Validar nombre
+    if (!isValidNetworkName(name)) {
+        Serial.println("[ERROR] Nombre inválido. Use 3-20 caracteres alfanuméricos, guiones o underscore.");
+        return;
+    }
+    
+    // Validar password
+    if (!isValidPassword(password)) {
+        Serial.println("[ERROR] Password inválida. Use 8-32 caracteres alfanuméricos.");
+        return;
+    }
+    
+    // Verificar que no exista ya una network con este nombre
+    if (findNetworkByName(name) >= 0) {
+        Serial.println("[ERROR] Ya existe una network con el nombre '" + name + "'.");
+        return;
+    }
+    
+    // Crear nueva network
+    networks[networkCount] = SimpleNetwork(name, password);
+    
+    // Si es la primera network, activarla automáticamente
+    if (networkCount == 0) {
+        networks[networkCount].active = true;
+        activeNetworkIndex = 0;
+        Serial.println("[INFO] Primera network creada - activada automáticamente.");
+    }
+    
+    networkCount++;
+    
+    // Mostrar confirmación
+    Serial.println("[OK] Network '" + name + "' creada exitosamente.");
+    Serial.println("[INFO] Nombre: " + networks[networkCount-1].name);
+    Serial.println("[INFO] Password: " + networks[networkCount-1].password);
+    Serial.println("[INFO] Hash: " + String(networks[networkCount-1].hash, HEX));
+    
+    if (networks[networkCount-1].active) {
+        Serial.println("[INFO] Network activa: " + networks[networkCount-1].name);
+    }
+    
+    Serial.println("[INFO] Use 'CONFIG_SAVE' para guardar la configuración.");
+}
+
+void ConfigManager::handleNetworkJoin(String params) {
+    params.trim();
+    
+    // Verificar que hay parámetros
+    if (params.length() == 0) {
+        Serial.println("[ERROR] Formato: NETWORK_JOIN <nombre> <password>");
+        Serial.println("[INFO] Use 'NETWORK_LIST' para ver networks disponibles.");
+        return;
+    }
+    
+    // Parsear parámetros: <nombre> <password>
+    int spaceIndex = params.indexOf(' ');
+    
+    if (spaceIndex <= 0) {
+        Serial.println("[ERROR] Formato: NETWORK_JOIN <nombre> <password>");
+        Serial.println("[INFO] Debe especificar tanto nombre como password.");
+        return;
+    }
+    
+    String name = params.substring(0, spaceIndex);
+    String password = params.substring(spaceIndex + 1);
+    
+    name.trim();
+    password.trim();
+    
+    // Validar parámetros
+    if (!isValidNetworkName(name)) {
+        Serial.println("[ERROR] Nombre inválido.");
+        return;
+    }
+    
+    if (!isValidPassword(password)) {
+        Serial.println("[ERROR] Password inválida.");
+        return;
+    }
+    
+    // Buscar network existente
+    int networkIndex = findNetworkByName(name);
+    
+    if (networkIndex >= 0) {
+        String upperPassword = password;
+        upperPassword.toUpperCase();
+        
+        // Network existe - verificar password
+        if (networks[networkIndex].password == upperPassword) {
+            // Password correcta - cambiar network activa
+            
+            // Desactivar network anterior
+            if (activeNetworkIndex >= 0) {
+                networks[activeNetworkIndex].active = false;
+            }
+            
+            // Activar nueva network
+            networks[networkIndex].active = true;
+            activeNetworkIndex = networkIndex;
+            
+            Serial.println("[OK] Conectado a network '" + networks[networkIndex].name + "'.");
+            Serial.println("[INFO] Hash activo: " + String(networks[networkIndex].hash, HEX));
+            Serial.println("[INFO] Use 'CONFIG_SAVE' para guardar la configuración.");
+        } else {
+            Serial.println("[ERROR] Password incorrecta para network '" + name + "'.");
+        }
+    } else {
+        // Network no existe - crear nueva
+        if (networkCount >= MAX_NETWORKS) {
+            Serial.println("[ERROR] Máximo de " + String(MAX_NETWORKS) + " networks alcanzado.");
+            Serial.println("[INFO] No se puede crear nueva network '" + name + "'.");
+            return;
+        }
+        
+        // Crear nueva network
+        networks[networkCount] = SimpleNetwork(name, password);
+        
+        // Desactivar network anterior
+        if (activeNetworkIndex >= 0) {
+            networks[activeNetworkIndex].active = false;
+        }
+        
+        // Activar nueva network
+        networks[networkCount].active = true;
+        activeNetworkIndex = networkCount;
+        networkCount++;
+        
+        Serial.println("[INFO] Network '" + name + "' no existía - creada y activada.");
+        Serial.println("[INFO] Nombre: " + networks[activeNetworkIndex].name);
+        Serial.println("[INFO] Password: " + networks[activeNetworkIndex].password);
+        Serial.println("[INFO] Hash: " + String(networks[activeNetworkIndex].hash, HEX));
+        Serial.println("[INFO] Use 'CONFIG_SAVE' para guardar la configuración.");
+    }
+}
+
+/*
  * MÉTODOS UTILITARIOS DE STRINGS
  */
 
