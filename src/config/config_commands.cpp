@@ -991,12 +991,6 @@ void ConfigManager::handleNetworkDelete(String params) {
     Serial.println("Escriba 'YES' para confirmar o cualquier");
     Serial.println("otra cosa para cancelar:");
     
-    // Esperar confirmación del usuario
-    // Nota: En un sistema real aquí habría un timeout y manejo de input
-    // Por simplicidad, asumiremos que el siguiente comando será la confirmación
-    
-    // Guardar el estado para la confirmación
-    // (En una implementación real, esto se manejaría con un estado del sistema)
     Serial.println("");
     Serial.println("[INFO] Comando preparado. La eliminación se ejecutará");
     Serial.println("[INFO] cuando escriba: NETWORK_DELETE_CONFIRM " + networkName);
