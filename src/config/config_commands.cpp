@@ -432,6 +432,15 @@ void ConfigManager::handleHelp() {
     Serial.println("SF (7-12), BW (125/250/500), CR (5-8), POWER (2-20), PREAMBLE (6-65535)");
     Serial.println("Ejemplo: RADIO_PROFILE_CUSTOM SF 10");
     Serial.println("");
+    Serial.println("=== COMANDOS DE NETWORKS ===");
+    Serial.println("NETWORK_CREATE <nombre> [password]  - Crear nueva network");
+    Serial.println("NETWORK_JOIN <nombre> <password>    - Unirse a network");
+    Serial.println("NETWORK_LIST                        - Listar networks guardadas");
+    Serial.println("NETWORK_INFO [nombre]               - Info detallada de network");
+    Serial.println("NETWORK_STATUS                      - Estado del sistema networks");
+    Serial.println("NETWORK_DELETE <nombre>             - Eliminar network");
+    Serial.println("NETWORK_DELETE_CONFIRM <nombre>     - Confirmar eliminación");
+    Serial.println("");
     Serial.println("=== COMANDOS DE GESTIÓN ===");
     Serial.println("CONFIG_SAVE                              - Guardar configuración");
     Serial.println("CONFIG_RESET                             - Resetear configuración");
@@ -862,6 +871,216 @@ void ConfigManager::handleNetworkJoin(String params) {
         Serial.println("[INFO] Hash: " + String(networks[activeNetworkIndex].hash, HEX));
         Serial.println("[INFO] Use 'CONFIG_SAVE' para guardar la configuración.");
     }
+}
+
+void ConfigManager::handleNetworkInfo(String params) {
+    params.trim();
+    
+    // Si no hay parámetros, mostrar info de la network activa
+    if (params.length() == 0) {
+        if (!hasActiveNetwork()) {
+            Serial.println("[ERROR] No hay network activa.");
+            Serial.println("[INFO] Use 'NETWORK_LIST' para ver networks disponibles.");
+            return;
+        }
+        
+        SimpleNetwork* active = getActiveNetwork();
+        Serial.println("========================================");
+        Serial.println("      INFO NETWORK ACTIVA");
+        Serial.println("========================================");
+        Serial.println("Nombre:       " + active->name);
+        Serial.println("Password:     " + active->password);
+        Serial.println("Hash:         " + String(active->hash, HEX));
+        Serial.println("Estado:       ACTIVA");
+        Serial.println("Longitud pwd: " + String(active->password.length()) + " caracteres");
+        Serial.println("Segura:       " + String(isPasswordSecure(active->password) ? "Sí" : "No"));
+        Serial.println("========================================");
+        return;
+    }
+    
+    // Buscar network específica por nombre
+    String networkName = params;
+    networkName.trim();
+    networkName.toUpperCase();
+    
+    int networkIndex = findNetworkByName(networkName);
+    if (networkIndex < 0) {
+        Serial.println("[ERROR] Network '" + params + "' no encontrada.");
+        Serial.println("[INFO] Use 'NETWORK_LIST' para ver networks disponibles.");
+        return;
+    }
+    
+    SimpleNetwork* net = &networks[networkIndex];
+    
+    // Mostrar información detallada de la network
+    Serial.println("========================================");
+    Serial.println("      INFO NETWORK: " + net->name);
+    Serial.println("========================================");
+    Serial.println("Nombre:       " + net->name);
+    Serial.println("Password:     " + net->password);
+    Serial.println("Hash:         " + String(net->hash, HEX));
+    Serial.println("Estado:       " + String(net->active ? "ACTIVA" : "Inactiva"));
+    Serial.println("Longitud pwd: " + String(net->password.length()) + " caracteres");
+    Serial.println("Segura:       " + String(isPasswordSecure(net->password) ? "Sí" : "No"));
+    Serial.println("Índice:       " + String(networkIndex));
+    
+    // Mostrar validaciones
+    String errorMsg;
+    bool nameValid = (validateNetworkNameAdvanced(net->name, errorMsg).length() > 0);
+    bool passValid = (validatePasswordAdvanced(net->password, net->name, errorMsg).length() > 0);
+    
+    Serial.println("Nombre válido: " + String(nameValid ? "Sí" : "No"));
+    Serial.println("Password válida: " + String(passValid ? "Sí" : "No"));
+    
+    Serial.println("========================================");
+    Serial.println("Uso memoria:  ~" + String(net->name.length() + net->password.length() + 35) + " bytes");
+    Serial.println("========================================");
+}
+
+void ConfigManager::handleNetworkDelete(String params) {
+    params.trim();
+    
+    // Verificar que se especificó un nombre
+    if (params.length() == 0) {
+        Serial.println("[ERROR] Formato: NETWORK_DELETE <nombre>");
+        Serial.println("[INFO] Use 'NETWORK_LIST' para ver networks disponibles.");
+        return;
+    }
+    
+    String networkName = params;
+    networkName.trim();
+    String originalName = networkName;
+    networkName.toUpperCase();
+    
+    // Verificar si se puede eliminar (validaciones de seguridad)
+    String errorMsg;
+    if (!canDeleteNetwork(networkName, errorMsg)) {
+        Serial.println("[ERROR] " + errorMsg);
+        return;
+    }
+    
+    // Buscar la network a eliminar
+    int networkIndex = findNetworkByName(networkName);
+    if (networkIndex < 0) {
+        Serial.println("[ERROR] Network '" + originalName + "' no encontrada.");
+        return;
+    }
+    
+    SimpleNetwork* networkToDelete = &networks[networkIndex];
+    bool isDeletingActive = networkToDelete->active;
+    
+    // Mostrar información de la network a eliminar
+    Serial.println("========================================");
+    Serial.println("      CONFIRMAR ELIMINACIÓN");
+    Serial.println("========================================");
+    Serial.println("Network a eliminar: " + networkToDelete->name);
+    Serial.println("Password:           " + networkToDelete->password);
+    Serial.println("Hash:               " + String(networkToDelete->hash, HEX));
+    Serial.println("Estado:             " + String(isDeletingActive ? "ACTIVA" : "Inactiva"));
+    
+    if (isDeletingActive) {
+        Serial.println("");
+        Serial.println("[WARNING] Esta es la network ACTIVA!");
+        Serial.println("[INFO] Se activará automáticamente otra network.");
+    }
+    
+    Serial.println("========================================");
+    Serial.println("¿Está seguro de eliminar esta network?");
+    Serial.println("Esta acción NO se puede deshacer.");
+    Serial.println("");
+    Serial.println("Escriba 'YES' para confirmar o cualquier");
+    Serial.println("otra cosa para cancelar:");
+    
+    // Esperar confirmación del usuario
+    // Nota: En un sistema real aquí habría un timeout y manejo de input
+    // Por simplicidad, asumiremos que el siguiente comando será la confirmación
+    
+    // Guardar el estado para la confirmación
+    // (En una implementación real, esto se manejaría con un estado del sistema)
+    Serial.println("");
+    Serial.println("[INFO] Comando preparado. La eliminación se ejecutará");
+    Serial.println("[INFO] cuando escriba: NETWORK_DELETE_CONFIRM " + networkName);
+    Serial.println("[INFO] o cancele con cualquier otro comando.");
+    
+    return;
+}
+
+void ConfigManager::handleNetworkDeleteConfirm(String params) {
+    params.trim();
+    
+    if (params.length() == 0) {
+        Serial.println("[ERROR] Formato: NETWORK_DELETE_CONFIRM <nombre>");
+        return;
+    }
+    
+    String networkName = params;
+    networkName.toUpperCase();
+    
+    // Verificar nuevamente que se puede eliminar
+    String errorMsg;
+    if (!canDeleteNetwork(networkName, errorMsg)) {
+        Serial.println("[ERROR] " + errorMsg);
+        return;
+    }
+    
+    // Buscar la network a eliminar
+    int networkIndex = findNetworkByName(networkName);
+    if (networkIndex < 0) {
+        Serial.println("[ERROR] Network '" + params + "' no encontrada.");
+        return;
+    }
+    
+    SimpleNetwork* networkToDelete = &networks[networkIndex];
+    bool isDeletingActive = networkToDelete->active;
+    String deletedName = networkToDelete->name;
+    
+    // Eliminar la network (mover todas las siguientes una posición hacia atrás)
+    for (int i = networkIndex; i < networkCount - 1; i++) {
+        networks[i] = networks[i + 1];
+    }
+    
+    // Reducir contador
+    networkCount--;
+    
+    // Si eliminamos la network activa, activar otra
+    if (isDeletingActive) {
+        if (networkCount > 0) {
+            // Activar la primera network disponible
+            networks[0].active = true;
+            activeNetworkIndex = 0;
+            
+            // Desactivar todas las demás
+            for (int i = 1; i < networkCount; i++) {
+                networks[i].active = false;
+            }
+            
+            Serial.println("[INFO] Network '" + networks[0].name + "' activada automáticamente.");
+        } else {
+            // No quedan networks
+            activeNetworkIndex = -1;
+            Serial.println("[INFO] No quedan networks. Sistema sin network activa.");
+        }
+    } else {
+        // Ajustar el índice activo si es necesario
+        if (activeNetworkIndex > networkIndex) {
+            activeNetworkIndex--;
+        }
+    }
+    
+    // Confirmar eliminación
+    Serial.println("========================================");
+    Serial.println("[OK] Network '" + deletedName + "' eliminada exitosamente.");
+    Serial.println("Networks restantes: " + String(networkCount) + "/" + String(MAX_NETWORKS));
+    
+    if (hasActiveNetwork()) {
+        SimpleNetwork* active = getActiveNetwork();
+        Serial.println("Network activa: " + active->name);
+    } else {
+        Serial.println("Network activa: NINGUNA");
+    }
+    
+    Serial.println("========================================");
+    Serial.println("[INFO] Use 'CONFIG_SAVE' para guardar los cambios.");
 }
 
 /*

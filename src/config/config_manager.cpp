@@ -203,6 +203,23 @@ void ConfigManager::processSerialInput() {
     else if (input.startsWith("NETWORK_JOIN ")) {
         handleNetworkJoin(input.substring(13));
     }
+    else if (input.startsWith("NETWORK_INFO")) {
+        // Manejar tanto "NETWORK_INFO" como "NETWORK_INFO <nombre>"
+        if (input.length() == 12) {
+            handleNetworkInfo("");  // Sin parámetros
+        } else {
+            handleNetworkInfo(input.substring(13));  // Con nombre especifico
+        }
+    }
+    else if (input == "NETWORK_STATUS") {
+        handleNetworkStatus();
+    }
+    else if (input.startsWith("NETWORK_DELETE ")) {
+        handleNetworkDelete(input.substring(15));
+    }
+    else if (input.startsWith("NETWORK_DELETE_CONFIRM ")) {
+        handleNetworkDeleteConfirm(input.substring(23));
+    }
     else {
         Serial.println("[ERROR] Comando desconocido. Use 'HELP' para ver comandos disponibles.");
     }
@@ -475,6 +492,312 @@ void ConfigManager::loadNetworks() {
             Serial.println("[Networks] Network activa: " + networks[activeNetworkIndex].name);
         }
     }
+}
+
+// Verificar si el nombre está en la lista de nombres reservados
+bool ConfigManager::isReservedNetworkName(String name) {
+    name.trim();
+    name.toUpperCase();
+    
+    // Lista de nombres reservados del sistema
+    String reservedNames[] = {
+        "CONFIG", "ADMIN", "DEBUG", "SYSTEM", "DEVICE", 
+        "LORA", "MESH", "NETWORK", "DEFAULT", "TEST",
+        "GPS", "TRACKER", "REPEATER", "RECEIVER"
+    };
+    
+    int numReserved = sizeof(reservedNames) / sizeof(reservedNames[0]);
+    
+    for (int i = 0; i < numReserved; i++) {
+        if (name.equals(reservedNames[i])) {
+            return true;  // Es un nombre reservado
+        }
+    }
+    
+    return false;  // No es reservado
+}
+
+// Verificar que la password tenga al menos un número y una letra
+bool ConfigManager::hasNumberAndLetter(String password) {
+    bool hasNumber = false;
+    bool hasLetter = false;
+    
+    for (int i = 0; i < password.length(); i++) {
+        char c = password.charAt(i);
+        if (isDigit(c)) {
+            hasNumber = true;
+        }
+        if (isAlpha(c)) {
+            hasLetter = true;
+        }
+        
+        // Si ya encontramos ambos, podemos salir temprano
+        if (hasNumber && hasLetter) {
+            return true;
+        }
+    }
+    
+    return (hasNumber && hasLetter);
+}
+
+// Validar que la password cumple criterios de seguridad
+bool ConfigManager::isPasswordSecure(String password) {
+    // Verificar longitud básica (ya se hace en isValidPassword)
+    if (password.length() < 8 || password.length() > 32) {
+        return false;
+    }
+    
+    // Debe tener al menos un número y una letra
+    if (!hasNumberAndLetter(password)) {
+        return false;
+    }
+    
+    // No puede ser una secuencia simple
+    if (password.equals("12345678") || password.equals("ABCDEFGH") || 
+        password.equals("PASSWORD") || password.equals("QWERTYUI")) {
+        return false;
+    }
+    
+    return true;
+}
+
+// Validación completa de nombre de network con mensaje de error detallado
+String ConfigManager::validateNetworkNameAdvanced(String name, String& errorMsg) {
+    // Limpiar y normalizar
+    name.trim();
+    String originalName = name;
+    name.toUpperCase();
+    
+    // Verificar longitud
+    if (name.length() < 3) {
+        errorMsg = "Nombre muy corto. Mínimo 3 caracteres.";
+        return "";
+    }
+    if (name.length() > 20) {
+        errorMsg = "Nombre muy largo. Máximo 20 caracteres.";
+        return "";
+    }
+    
+    // Verificar caracteres válidos
+    for (int i = 0; i < name.length(); i++) {
+        char c = name.charAt(i);
+        if (!isAlphaNumeric(c) && c != '_' && c != '-') {
+            errorMsg = "Carácter inválido '" + String(c) + "'. Use solo letras, números, guiones y underscore.";
+            return "";
+        }
+    }
+    
+    // No puede empezar o terminar con guión/underscore
+    if (name.charAt(0) == '-' || name.charAt(0) == '_' || 
+        name.charAt(name.length()-1) == '-' || name.charAt(name.length()-1) == '_') {
+        errorMsg = "No puede empezar o terminar con guión o underscore.";
+        return "";
+    }
+    
+    // Verificar nombres reservados
+    if (isReservedNetworkName(name)) {
+        errorMsg = "Nombre reservado del sistema. Use otro nombre.";
+        return "";
+    }
+    
+    // Verificar duplicados
+    if (findNetworkByName(name) >= 0) {
+        errorMsg = "Ya existe una network con ese nombre.";
+        return "";
+    }
+    
+    // Todo válido
+    errorMsg = "";
+    return name;
+}
+
+// Validación completa de password con mensaje de error detallado
+String ConfigManager::validatePasswordAdvanced(String password, String networkName, String& errorMsg) {
+    // Limpiar y normalizar
+    password.trim();
+    password.toUpperCase();
+    networkName.toUpperCase();
+    
+    // Verificar longitud
+    if (password.length() < 8) {
+        errorMsg = "Password muy corta. Mínimo 8 caracteres.";
+        return "";
+    }
+    if (password.length() > 32) {
+        errorMsg = "Password muy larga. Máximo 32 caracteres.";
+        return "";
+    }
+    
+    // Verificar caracteres válidos (solo alfanuméricos por ahora)
+    for (int i = 0; i < password.length(); i++) {
+        char c = password.charAt(i);
+        if (!isAlphaNumeric(c)) {
+            errorMsg = "Solo se permiten letras y números en la password.";
+            return "";
+        }
+    }
+    
+    // Verificar criterios de seguridad
+    if (!hasNumberAndLetter(password)) {
+        errorMsg = "Password debe tener al menos una letra y un número.";
+        return "";
+    }
+    
+    // No puede ser igual al nombre de la network
+    if (password.equals(networkName)) {
+        errorMsg = "Password no puede ser igual al nombre de la network.";
+        return "";
+    }
+    
+    // Verificar que no sea una password débil
+    if (!isPasswordSecure(password)) {
+        errorMsg = "Password demasiado simple. Evite secuencias obvias.";
+        return "";
+    }
+    
+    // Todo válido
+    errorMsg = "";
+    return password;
+}
+
+// Verificar si se puede eliminar una network específica
+bool ConfigManager::canDeleteNetwork(String name, String& errorMsg) {
+    name.trim();
+    name.toUpperCase();
+    
+    // Verificar que la network existe
+    int networkIndex = findNetworkByName(name);
+    if (networkIndex < 0) {
+        errorMsg = "Network '" + name + "' no existe.";
+        return false;
+    }
+    
+    // No se puede eliminar si es la única network
+    if (networkCount <= 1) {
+        errorMsg = "No se puede eliminar la única network. Cree otra primero.";
+        return false;
+    }
+    
+    // Todo válido para eliminar
+    errorMsg = "";
+    return true;
+}
+
+// Calcular memoria EEPROM usada por networks (aproximación)
+uint16_t ConfigManager::getEEPROMUsageBytes() {
+    uint16_t totalBytes = 0;
+    
+    // Bytes fijos por network metadata
+    totalBytes += sizeof(networkCount);      // Contador de networks
+    totalBytes += sizeof(activeNetworkIndex); // Índice activo
+    
+    // Bytes por cada network guardada
+    for (int i = 0; i < networkCount; i++) {
+        // Cada network usa: name + password + hash
+        totalBytes += networks[i].name.length() + 1;     // +1 por null terminator
+        totalBytes += networks[i].password.length() + 1; // +1 por null terminator  
+        totalBytes += sizeof(uint32_t);                  // hash
+    }
+    
+    // Overhead estimado de las keys EEPROM (aproximación)
+    totalBytes += networkCount * 30; // ~30 bytes promedio por set de keys
+    
+    return totalBytes;
+}
+
+// Calcular memoria EEPROM disponible (estimación conservadora)
+uint16_t ConfigManager::getAvailableEEPROMBytes() {
+    // ESP32 Preferences tiene ~4KB disponibles típicamente
+    // Reservamos espacio para la configuración general del dispositivo
+    const uint16_t TOTAL_EEPROM_SIZE = 4096;
+    const uint16_t RESERVED_FOR_CONFIG = 512;  // Para config general del dispositivo
+    const uint16_t SAFETY_MARGIN = 256;       // Margen de seguridad
+    
+    uint16_t usedBytes = getEEPROMUsageBytes();
+    uint16_t availableForNetworks = TOTAL_EEPROM_SIZE - RESERVED_FOR_CONFIG - SAFETY_MARGIN;
+    
+    if (usedBytes >= availableForNetworks) {
+        return 0;  // No hay espacio disponible
+    }
+    
+    return availableForNetworks - usedBytes;
+}
+
+void ConfigManager::handleNetworkStatus() {
+    Serial.println("========================================");
+    Serial.println("      ESTADO SISTEMA NETWORKS");
+    Serial.println("========================================");
+    
+    // Estadísticas básicas
+    Serial.println("Networks guardadas: " + String(networkCount) + "/" + String(MAX_NETWORKS));
+    
+    if (networkCount == 0) {
+        Serial.println("Estado:           SIN NETWORKS");
+        Serial.println("[INFO] Use 'NETWORK_CREATE <nombre>' para crear la primera network.");
+        Serial.println("========================================");
+        return;
+    }
+    
+    // Network activa
+    if (hasActiveNetwork()) {
+        SimpleNetwork* active = getActiveNetwork();
+        Serial.println("Network activa:   " + active->name);
+        Serial.println("Hash activo:      " + String(active->hash, HEX));
+    } else {
+        Serial.println("Network activa:   NINGUNA");
+        Serial.println("[WARNING] No hay network activa!");
+    }
+    
+    // Análisis de seguridad
+    int secureNetworks = 0;
+    int weakPasswords = 0;
+    
+    for (int i = 0; i < networkCount; i++) {
+        if (isPasswordSecure(networks[i].password)) {
+            secureNetworks++;
+        } else {
+            weakPasswords++;
+        }
+    }
+    
+    Serial.println("Networks seguras: " + String(secureNetworks) + "/" + String(networkCount));
+    if (weakPasswords > 0) {
+        Serial.println("Passwords débiles: " + String(weakPasswords) + " [WARNING]");
+    }
+    
+    // Uso de memoria EEPROM
+    uint16_t usedBytes = getEEPROMUsageBytes();
+    uint16_t availableBytes = getAvailableEEPROMBytes();
+    uint16_t totalNetworkSpace = usedBytes + availableBytes;
+    
+    Serial.println("----------------------------------------");
+    Serial.println("Memoria EEPROM (networks):");
+    Serial.println("  Usada:        " + String(usedBytes) + " bytes");
+    Serial.println("  Disponible:   " + String(availableBytes) + " bytes");
+    Serial.println("  Total:        " + String(totalNetworkSpace) + " bytes");
+    
+    // Calcular porcentaje usado
+    float percentUsed = (float)usedBytes / (float)totalNetworkSpace * 100.0;
+    Serial.println("  Uso:          " + String(percentUsed, 1) + "%");
+    
+    // Advertencias de memoria
+    if (percentUsed > 80.0) {
+        Serial.println("  [WARNING] Memoria casi llena!");
+    } else if (percentUsed > 90.0) {
+        Serial.println("  [CRITICAL] Memoria crítica!");
+    }
+    
+    // Capacidad estimada
+    int estimatedCapacity = availableBytes / 40; // ~40 bytes promedio por network
+    Serial.println("  Capacidad est: +" + String(estimatedCapacity) + " networks más");
+    
+    Serial.println("========================================");
+    Serial.println("Sistema:          " + String(config.configValid ? "CONFIGURADO" : "SIN CONFIGURAR"));
+    Serial.println("Dispositivo ID:   " + String(config.deviceID));
+    Serial.println("Rol:              " + String(config.role == ROLE_TRACKER ? "TRACKER" : 
+                                                config.role == ROLE_REPEATER ? "REPEATER" : 
+                                                config.role == ROLE_RECEIVER ? "RECEIVER" : "NONE"));
+    Serial.println("========================================");
 }
 
 // ========================================================

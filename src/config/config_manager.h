@@ -140,6 +140,15 @@ private:
     bool isValidPassword(String password);   // Validar password
     int findNetworkByName(String name);      // Buscar network por nombre
     String generateRandomPassword();         // Generar password aleatoria
+
+    bool isReservedNetworkName(String name);     // Verificar nombres reservados
+    bool isPasswordSecure(String password);      // Validar seguridad de password
+    bool hasNumberAndLetter(String password);    // Verificar que tenga número y letra
+    String validateNetworkNameAdvanced(String name, String& errorMsg);  // Validación completa con mensaje
+    String validatePasswordAdvanced(String password, String networkName, String& errorMsg);  // Validación completa
+    bool canDeleteNetwork(String name, String& errorMsg);  // Verificar si se puede eliminar network
+    uint16_t getEEPROMUsageBytes();            // Calcular memoria EEPROM usada
+    uint16_t getAvailableEEPROMBytes();        // Calcular memoria EEPROM disponible
     
     /*
      * MÉTODOS PRIVADOS
@@ -200,11 +209,14 @@ public:
     
     /*
      * MÉTODOS DE COMANDOS (manejadores)
-     * Estos serán implementados en config_commands.cpp
      */
     void handleNetworkCreate(String params);
     void handleNetworkJoin(String params);
     void handleNetworkList();
+    void handleNetworkInfo(String params);
+    void handleNetworkStatus();
+    void handleNetworkDelete(String params);
+    void handleNetworkDeleteConfirm(String params);
     
     // NUEVOS: Radio Profiles getters/setters
     RadioProfile getRadioProfile() { return config.radioProfile; }
