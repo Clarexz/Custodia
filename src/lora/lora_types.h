@@ -132,6 +132,7 @@ struct LoRaStats {
     uint32_t duplicatesIgnored;
     uint32_t rebroadcasts;
     uint32_t hopLimitReached;
+    uint32_t networkFilteredPackets;
 };
 
 /*

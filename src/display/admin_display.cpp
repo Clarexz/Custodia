@@ -43,6 +43,12 @@ void AdminDisplay::showTrackerOutput(uint16_t deviceID, bool sent) {
     Serial.println("Packet: " + gpsManager.formatPacketWithDeviceID(deviceID));
     Serial.println("LoRa Status: " + String(sent ? "ENVIADO" : "FALLIDO"));
     Serial.println("Estado LoRa: " + loraManager.getStatusString());
+    if (configManager.hasActiveNetwork()) {
+        SimpleNetwork* network = configManager.getActiveNetwork();
+        Serial.println("Network: " + network->name + " (Hash: " + String(network->hash, HEX) + ")");
+    } else {
+        Serial.println("Network: NINGUNA ACTIVA");
+    }
     
     if (sent) {
         Serial.println("RSSI último: " + String(loraManager.getLastRSSI()) + " dBm");
@@ -53,6 +59,7 @@ void AdminDisplay::showTrackerOutput(uint16_t deviceID, bool sent) {
     } else {
         Serial.println("ERROR: Fallo en transmisión LoRa");
     }
+    Serial.println("Network filtrados: " + String(stats.networkFilteredPackets));
     
     Serial.println("Próxima transmisión en " + String(config.gpsInterval) + " segundos");
     Serial.println("==========================================\n");
@@ -75,6 +82,13 @@ void AdminDisplay::showRepeaterOutput() {
     Serial.println("Duplicados ignorados: " + String(stats.duplicatesIgnored));
     Serial.println("Hop limit alcanzado: " + String(stats.hopLimitReached));
     Serial.println("===================================\n");
+    if (configManager.hasActiveNetwork()) {
+        SimpleNetwork* network = configManager.getActiveNetwork();
+        Serial.println("Network: " + network->name + " (Hash: " + String(network->hash, HEX) + ")");
+    } else {
+        Serial.println("Network: NINGUNA ACTIVA");
+    }
+    Serial.println("Network filtrados: " + String(stats.networkFilteredPackets));
 }
 
 /*
@@ -89,6 +103,12 @@ void AdminDisplay::showReceiverOutput() {
     Serial.println("Escuchando posiciones GPS de la red...");
     Serial.println("Role: RECEIVER (CLIENT priority)");
     Serial.println("Estado LoRa: " + loraManager.getStatusString());
+    if (configManager.hasActiveNetwork()) {
+        SimpleNetwork* network = configManager.getActiveNetwork();
+        Serial.println("Network: " + network->name + " (Hash: " + String(network->hash, HEX) + ")");
+    } else {
+        Serial.println("Network: NINGUNA ACTIVA - Modo legacy");
+    }
     
     // Mostrar nuestra propia posición como referencia
     if (gpsData.hasValidFix) {
@@ -100,6 +120,7 @@ void AdminDisplay::showReceiverOutput() {
     Serial.println("Packets recibidos: " + String(stats.packetsReceived));
     Serial.println("Duplicados ignorados: " + String(stats.duplicatesIgnored));
     Serial.println("Retransmisiones hechas: " + String(stats.rebroadcasts));
+    Serial.println("Network filtrados: " + String(stats.networkFilteredPackets));
     
     // Detectar nuevos packets recibidos
     static uint32_t lastPacketCount = 0;

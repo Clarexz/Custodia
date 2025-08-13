@@ -55,6 +55,7 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
     packet.maxHops = MESHTASTIC_MAX_HOPS;  // Máximo saltos
     packet.packetID = ++packetCounter;
     packet.payloadLength = payloadLength;
+    packet.networkHash = configManager.getActiveNetworkHash();
     
     // Copiar payload
     memcpy(packet.payload, payload, payloadLength);
@@ -105,6 +106,16 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
     }
 }
 
+bool LoRaManager::isPacketFromSameNetwork(const LoRaPacket* packet) {
+    // Si no hay network activa, aceptar todos los packets (modo legacy)
+    if (!configManager.hasActiveNetwork()) {
+        return true;
+    }
+    
+    // Comparar hash del packet con hash de la network activa
+    return (packet->networkHash == configManager.getActiveNetworkHash());
+}
+
 /*
  * RECEPCIÓN Y PROCESAMIENTO DE PACKETS - ACTUALIZADO
  */
@@ -127,6 +138,19 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                 Serial.println("[LoRa] Packet inválido (checksum)");
             }
             return false;
+        }
+
+        if (!isPacketFromSameNetwork(packet)) {
+            // Incrementar estadística de filtrado
+            stats.networkFilteredPackets++;
+            
+            // Log opcional para debugging en modo ADMIN
+            if (configManager.isAdminMode()) {
+                Serial.printf("[NETWORK] Packet filtrado - Hash recibido: %08X vs activo: %08X\n", 
+                             packet->networkHash, configManager.getActiveNetworkHash());
+            }
+            
+            return false; // Rechazar packet de network diferente
         }
         
         // Verificar duplicados

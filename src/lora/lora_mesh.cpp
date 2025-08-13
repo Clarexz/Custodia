@@ -156,6 +156,14 @@ bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
         Serial.println("[DEBUG] sourceID: " + String(packet->sourceID) + ", ourID: " + String(deviceID));
         Serial.println("[DEBUG] destinationID: " + String(packet->destinationID));
     }
+
+    if (!isPacketFromSameNetwork(packet)) {
+        if (configManager.isAdminMode()) {
+            Serial.printf("[NETWORK] No retransmitir: packet de network diferente (Hash: %08X vs %08X)\n", 
+                         packet->networkHash, configManager.getActiveNetworkHash());
+        }
+        return false; // No retransmitir packets de networks diferentes
+    }
     
     // No retransmitir si es para nosotros, o es de nosotros, o hop limit agotado
     bool toUs = isToUs(packet);

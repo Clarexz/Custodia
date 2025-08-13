@@ -105,6 +105,7 @@ void LoRaManager::resetStats() {
     stats.duplicatesIgnored = 0;
     stats.rebroadcasts = 0;
     stats.hopLimitReached = 0;
+    stats.networkFilteredPackets = 0;
     Serial.println("[LoRa] Estadísticas reseteadas");
 }
 

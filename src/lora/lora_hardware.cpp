@@ -33,6 +33,7 @@ LoRaManager::LoRaManager() : radio(new Module(LORA_NSS_PIN, LORA_DIO1_PIN, LORA_
     stats.duplicatesIgnored = 0;
     stats.rebroadcasts = 0;
     stats.hopLimitReached = 0;
+    stats.networkFilteredPackets = 0;
     
     // Inicializar mesh components
     currentRole = ROLE_NONE;

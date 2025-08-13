@@ -48,6 +48,7 @@ private:
     uint32_t getTxDelayMsecWeighted(float snr, DeviceRole role);
     uint32_t getRandomDelay(uint8_t cwSize);
     bool shouldFilterReceived(const LoRaPacket* packet);
+    bool isPacketFromSameNetwork(const LoRaPacket* packet);
     bool isRebroadcaster();
     bool isToUs(const LoRaPacket* packet);
     bool isFromUs(const LoRaPacket* packet);
