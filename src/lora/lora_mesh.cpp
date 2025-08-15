@@ -121,7 +121,7 @@ bool LoRaManager::isToUs(const LoRaPacket* packet) {
     // Los broadcasts NO son "para nosotros" - deben retransmitirse
     bool result = (packet->destinationID == deviceID);
     if (configManager.isAdminMode()) {
-        //Serial.println("[DEBUG] isToUs(): destID=" + String(packet->destinationID) + ", ourID=" + String(deviceID) + " → " + String(result));
+        Serial.println("[DEBUG] isToUs(): destID=" + String(packet->destinationID) + ", ourID=" + String(deviceID) + " → " + String(result));
     }
     return result;
 }
@@ -130,7 +130,7 @@ bool LoRaManager::isFromUs(const LoRaPacket* packet) {
     // Verificar si el packet es de nosotros
     bool result = (packet->sourceID == deviceID);
     if (configManager.isAdminMode()) {
-        //Serial.println("[DEBUG] isFromUs(): srcID=" + String(packet->sourceID) + ", ourID=" + String(deviceID) + " → " + String(result));
+        Serial.println("[DEBUG] isFromUs(): srcID=" + String(packet->sourceID) + ", ourID=" + String(deviceID) + " → " + String(result));
     }
     return result;
 }
@@ -151,10 +151,18 @@ bool LoRaManager::hasRolePriority(DeviceRole role) {
 bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
     // DEBUG: Verificar entrada - SOLO EN MODO ADMIN
     if (configManager.isAdminMode()) {
-        //Serial.println("[DEBUG] perhapsRebroadcast() ENTRADA");
-        //Serial.println("[DEBUG] packetID: " + String(packet->packetID));
-        //Serial.println("[DEBUG] sourceID: " + String(packet->sourceID) + ", ourID: " + String(deviceID));
-        //Serial.println("[DEBUG] destinationID: " + String(packet->destinationID));
+        Serial.println("[DEBUG] perhapsRebroadcast() ENTRADA");
+        Serial.println("[DEBUG] packetID: " + String(packet->packetID));
+        Serial.println("[DEBUG] sourceID: " + String(packet->sourceID) + ", ourID: " + String(deviceID));
+        Serial.println("[DEBUG] destinationID: " + String(packet->destinationID));
+    }
+
+    if (!isPacketFromSameNetwork(packet)) {
+        if (configManager.isAdminMode()) {
+            Serial.printf("[NETWORK] No retransmitir: packet de network diferente (Hash: %08X vs %08X)\n", 
+                         packet->networkHash, configManager.getActiveNetworkHash());
+        }
+        return false; // No retransmitir packets de networks diferentes
     }
     
     // No retransmitir si es para nosotros, o es de nosotros, o hop limit agotado
@@ -163,7 +171,7 @@ bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
     bool hopLimitReached = (packet->hops >= packet->maxHops);
     
     if (configManager.isAdminMode()) {
-        //Serial.println("[DEBUG] toUs: " + String(toUs) + ", fromUs: " + String(fromUs) + ", hopLimit: " + String(hopLimitReached));
+        Serial.println("[DEBUG] toUs: " + String(toUs) + ", fromUs: " + String(fromUs) + ", hopLimit: " + String(hopLimitReached));
     }
     
     if (toUs || fromUs || hopLimitReached) {
@@ -175,10 +183,10 @@ bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
         }
         if (configManager.isAdminMode()) {
             if (toUs) {
-                //Serial.println("[DEBUG] SALIENDO: packet es para nosotros");
+                Serial.println("[DEBUG] SALIENDO: packet es para nosotros");
             }
             if (fromUs) {
-                //Serial.println("[DEBUG] SALIENDO: packet es de nosotros");
+                Serial.println("[DEBUG] SALIENDO: packet es de nosotros");
             }
         }
         return false;
@@ -195,18 +203,18 @@ bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
     // Verificar si somos rebroadcaster
     bool canRebroadcast = isRebroadcaster();
     if (configManager.isAdminMode()) {
-        //Serial.println("[DEBUG] isRebroadcaster: " + String(canRebroadcast));
+        Serial.println("[DEBUG] isRebroadcaster: " + String(canRebroadcast));
     }
     
     if (!canRebroadcast) {
         if (configManager.isAdminMode()) {
-            //Serial.println("[LoRa] No retransmitir: Role no permite rebroadcast");
+            Serial.println("[LoRa] No retransmitir: Role no permite rebroadcast");
         }
         return false;
     }
     
     if (configManager.isAdminMode()) {
-        //Serial.println("[DEBUG] ¡TODOS LOS CHECKS PASARON! Procediendo con retransmisión...");
+        Serial.println("[DEBUG] ¡TODOS LOS CHECKS PASARON! Procediendo con retransmisión...");
     }
     
     // Calcular delay basado en SNR y role

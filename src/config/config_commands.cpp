@@ -8,10 +8,6 @@
 #include "config_manager.h"
 #include "config_commands.h"
 #include <WiFi.h>
-#include "../network/network_security.h"
-#include "../lora/lora_types.h"
-#include "../network/crypto_engine.h"
-#include "../lora.h"
 
 /*
  * MANEJADORES DE COMANDOS DE CONFIGURACIÓN
@@ -436,6 +432,15 @@ void ConfigManager::handleHelp() {
     Serial.println("SF (7-12), BW (125/250/500), CR (5-8), POWER (2-20), PREAMBLE (6-65535)");
     Serial.println("Ejemplo: RADIO_PROFILE_CUSTOM SF 10");
     Serial.println("");
+    Serial.println("=== COMANDOS DE NETWORKS ===");
+    Serial.println("NETWORK_CREATE <nombre> [password]  - Crear nueva network");
+    Serial.println("NETWORK_JOIN <nombre> <password>    - Unirse a network");
+    Serial.println("NETWORK_LIST                        - Listar networks guardadas");
+    Serial.println("NETWORK_INFO [nombre]               - Info detallada de network");
+    Serial.println("NETWORK_STATUS                      - Estado del sistema networks");
+    Serial.println("NETWORK_DELETE <nombre>             - Eliminar network");
+    Serial.println("NETWORK_DELETE_CONFIRM <nombre>     - Confirmar eliminación");
+    Serial.println("");
     Serial.println("=== COMANDOS DE GESTIÓN ===");
     Serial.println("CONFIG_SAVE                              - Guardar configuración");
     Serial.println("CONFIG_RESET                             - Resetear configuración");
@@ -450,22 +455,21 @@ void ConfigManager::handleQuickConfig(String params) {
     params.trim();
     
     if (params.length() == 0) {
-        Serial.println("[ERROR] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS][,CHANNEL]");
+        Serial.println("[ERROR] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS]");
         Serial.println("[INFO] Ejemplo: Q_CONFIG TRACKER,001,15,US,SIMPLE,MESH_MAX_NODES");
         Serial.println("[INFO] Ejemplo con hops: Q_CONFIG TRACKER,001,15,US,SIMPLE,DESERT_LONG_FAST,5");
-        Serial.println("[INFO] Ejemplo con canal: Q_CONFIG TRACKER,001,15,US,SIMPLE,DESERT_LONG_FAST,5,camellos");
         return;
     }
     
     // Dividir parámetros por comas
-    String parameters[8]; // Máximo 8 parámetros
+    String parameters[7]; // Máximo 7 parámetros
     int paramCount = 0;
     int startIndex = 0;
     
     // Parser manual por comas
     for (int i = 0; i <= params.length(); i++) {
         if (i == params.length() || params.charAt(i) == ',') {
-            if (paramCount < 8) {
+            if (paramCount < 7) {
                 parameters[paramCount] = params.substring(startIndex, i);
                 parameters[paramCount].trim();
                 paramCount++;
@@ -477,7 +481,7 @@ void ConfigManager::handleQuickConfig(String params) {
     // Validar número mínimo de parámetros
     if (paramCount < 6) {
         Serial.println("[ERROR] Faltan parámetros obligatorios");
-        Serial.println("[INFO] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE,[MAX_HOPS],[CHANNEL]");
+        Serial.println("[INFO] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS]");
         Serial.println("[INFO] Parámetros recibidos: " + String(paramCount) + "/6 mínimos");
         return;
     }
@@ -622,22 +626,6 @@ void ConfigManager::handleQuickConfig(String params) {
         config.maxHops = 3;
         Serial.println("[Q_CONFIG] ✓ Max hops: 3 (por defecto)");
     }
-
-    // 8. CONFIGURAR CANAL (parámetro 7 - OPCIONAL) - NUEVO
-    String channelName = "default"; // Valor por defecto
-    
-    if (paramCount >= 8 && parameters[7].length() > 0) {
-        channelName = parameters[7];
-        // Validar nombre del canal
-        if (channelName.length() >= MAX_CHANNEL_NAME_LENGTH) {
-            Serial.println("[Q_CONFIG] ✗ Nombre de canal muy largo: " + channelName + " (máximo 30 caracteres)");
-            allValid = false;
-        } else {
-            Serial.println("[Q_CONFIG] ✓ Canal: " + channelName);
-        }
-    } else {
-        Serial.println("[Q_CONFIG] ✓ Canal: default (por defecto)");
-    }
     
     // VALIDACIÓN FINAL Y GUARDADO
     if (allValid) {
@@ -654,14 +642,6 @@ void ConfigManager::handleQuickConfig(String params) {
         // Guardar automáticamente
         saveConfig();
         
-        // NUEVO: Solo agregar estas líneas para canal
-        Serial.println("[Q_CONFIG] Configurando canal de seguridad...");
-        if (channelName != "default") {
-            Serial.println("[Q_CONFIG] ✓ Creando canal '" + channelName + "'...");
-            handleNetworkCreate(channelName);
-        } else {
-            Serial.println("[Q_CONFIG] ✓ Canal: default (sin encriptación)");
-        }
         Serial.println("[Q_CONFIG] ========================================");
         Serial.println("[Q_CONFIG] CONFIGURACIÓN COMPLETADA EXITOSAMENTE");
         Serial.println("[Q_CONFIG] ========================================");
@@ -679,8 +659,422 @@ void ConfigManager::handleQuickConfig(String params) {
         Serial.println("[Q_CONFIG] CONFIGURACIÓN FALLÓ");
         Serial.println("[Q_CONFIG] ========================================");
         Serial.println("[Q_CONFIG] Corrija los errores e intente nuevamente");
-        Serial.println("[Q_CONFIG] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE,[MAX_HOPS],[CHANNEL]");
+        Serial.println("[Q_CONFIG] Formato: Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS]");
     }
+}
+
+/*
+ * ===== COMANDOS DE NETWORKS =====
+ */
+
+void ConfigManager::handleNetworkList() {
+    Serial.println("========================================");
+    Serial.println("           NETWORKS GUARDADAS");
+    Serial.println("========================================");
+    
+    if (networkCount == 0) {
+        Serial.println("[INFO] No hay networks guardadas.");
+        Serial.println("[INFO] Use 'NETWORK_CREATE <nombre> [password]' para crear una.");
+        Serial.println("========================================");
+        return;
+    }
+    
+    // Mostrar cada network guardada
+    for (int i = 0; i < networkCount; i++) {
+        SimpleNetwork* net = &networks[i];
+        
+        // Indicador de network activa
+        String activeIndicator = net->active ? " [ACTIVA]" : "";
+        
+        Serial.println("Network " + String(i + 1) + ":" + activeIndicator);
+        Serial.println("  Nombre:   " + net->name);
+        Serial.println("  Password: " + net->password);
+        Serial.println("  Hash:     " + String(net->hash, HEX));
+        
+        if (i < networkCount - 1) {
+            Serial.println("  ----");
+        }
+    }
+    
+    Serial.println("========================================");
+    Serial.println("Total: " + String(networkCount) + "/" + String(MAX_NETWORKS) + " networks");
+    
+    // Mostrar network activa
+    if (hasActiveNetwork()) {
+        SimpleNetwork* active = getActiveNetwork();
+        Serial.println("Network activa: " + active->name);
+    } else {
+        Serial.println("Ninguna network activa");
+    }
+    
+    Serial.println("========================================");
+}
+
+void ConfigManager::handleNetworkCreate(String params) {
+    params.trim();
+    
+    // Verificar que no excedamos el límite de networks
+    if (networkCount >= MAX_NETWORKS) {
+        Serial.println("[ERROR] Máximo de " + String(MAX_NETWORKS) + " networks alcanzado.");
+        Serial.println("[INFO] Use 'NETWORK_LIST' para ver networks existentes.");
+        return;
+    }
+    
+    // Parsear parámetros: <nombre> [password]
+    int spaceIndex = params.indexOf(' ');
+    String name = "";
+    String password = "";
+    
+    if (spaceIndex > 0) {
+        // Hay password especificada
+        name = params.substring(0, spaceIndex);
+        password = params.substring(spaceIndex + 1);
+        password.trim();
+    } else {
+        // Solo nombre, generar password automática
+        name = params;
+        password = generateRandomPassword();
+        Serial.println("[INFO] Password auto-generada: " + password);
+    }
+    
+    name.trim();
+    
+    // Validar nombre
+    if (!isValidNetworkName(name)) {
+        Serial.println("[ERROR] Nombre inválido. Use 3-20 caracteres alfanuméricos, guiones o underscore.");
+        return;
+    }
+    
+    // Validar password
+    if (!isValidPassword(password)) {
+        Serial.println("[ERROR] Password inválida. Use 8-32 caracteres alfanuméricos.");
+        return;
+    }
+    
+    // Verificar que no exista ya una network con este nombre
+    if (findNetworkByName(name) >= 0) {
+        Serial.println("[ERROR] Ya existe una network con el nombre '" + name + "'.");
+        return;
+    }
+    
+    // Crear nueva network
+    networks[networkCount] = SimpleNetwork(name, password);
+    
+    // Si es la primera network, activarla automáticamente
+    if (networkCount == 0) {
+        networks[networkCount].active = true;
+        activeNetworkIndex = 0;
+        Serial.println("[INFO] Primera network creada - activada automáticamente.");
+    }
+    
+    networkCount++;
+    
+    // Mostrar confirmación
+    Serial.println("[OK] Network '" + name + "' creada exitosamente.");
+    Serial.println("[INFO] Nombre: " + networks[networkCount-1].name);
+    Serial.println("[INFO] Password: " + networks[networkCount-1].password);
+    Serial.println("[INFO] Hash: " + String(networks[networkCount-1].hash, HEX));
+    
+    if (networks[networkCount-1].active) {
+        Serial.println("[INFO] Network activa: " + networks[networkCount-1].name);
+    }
+    
+    Serial.println("[INFO] Use 'CONFIG_SAVE' para guardar la configuración.");
+}
+
+void ConfigManager::handleNetworkJoin(String params) {
+    params.trim();
+    
+    // Verificar que hay parámetros
+    if (params.length() == 0) {
+        Serial.println("[ERROR] Formato: NETWORK_JOIN <nombre> <password>");
+        Serial.println("[INFO] Use 'NETWORK_LIST' para ver networks disponibles.");
+        return;
+    }
+    
+    // Parsear parámetros: <nombre> <password>
+    int spaceIndex = params.indexOf(' ');
+    
+    if (spaceIndex <= 0) {
+        Serial.println("[ERROR] Formato: NETWORK_JOIN <nombre> <password>");
+        Serial.println("[INFO] Debe especificar tanto nombre como password.");
+        return;
+    }
+    
+    String name = params.substring(0, spaceIndex);
+    String password = params.substring(spaceIndex + 1);
+    
+    name.trim();
+    password.trim();
+    
+    // Validar parámetros
+    if (!isValidNetworkName(name)) {
+        Serial.println("[ERROR] Nombre inválido.");
+        return;
+    }
+    
+    if (!isValidPassword(password)) {
+        Serial.println("[ERROR] Password inválida.");
+        return;
+    }
+    
+    // Buscar network existente
+    int networkIndex = findNetworkByName(name);
+    
+    if (networkIndex >= 0) {
+        String upperPassword = password;
+        upperPassword.toUpperCase();
+        
+        // Network existe - verificar password
+        if (networks[networkIndex].password == upperPassword) {
+            // Password correcta - cambiar network activa
+            
+            // Desactivar network anterior
+            if (activeNetworkIndex >= 0) {
+                networks[activeNetworkIndex].active = false;
+            }
+            
+            // Activar nueva network
+            networks[networkIndex].active = true;
+            activeNetworkIndex = networkIndex;
+            
+            Serial.println("[OK] Conectado a network '" + networks[networkIndex].name + "'.");
+            Serial.println("[INFO] Hash activo: " + String(networks[networkIndex].hash, HEX));
+            Serial.println("[INFO] Use 'CONFIG_SAVE' para guardar la configuración.");
+        } else {
+            Serial.println("[ERROR] Password incorrecta para network '" + name + "'.");
+        }
+    } else {
+        // Network no existe - crear nueva
+        if (networkCount >= MAX_NETWORKS) {
+            Serial.println("[ERROR] Máximo de " + String(MAX_NETWORKS) + " networks alcanzado.");
+            Serial.println("[INFO] No se puede crear nueva network '" + name + "'.");
+            return;
+        }
+        
+        // Crear nueva network
+        networks[networkCount] = SimpleNetwork(name, password);
+        
+        // Desactivar network anterior
+        if (activeNetworkIndex >= 0) {
+            networks[activeNetworkIndex].active = false;
+        }
+        
+        // Activar nueva network
+        networks[networkCount].active = true;
+        activeNetworkIndex = networkCount;
+        networkCount++;
+        
+        Serial.println("[INFO] Network '" + name + "' no existía - creada y activada.");
+        Serial.println("[INFO] Nombre: " + networks[activeNetworkIndex].name);
+        Serial.println("[INFO] Password: " + networks[activeNetworkIndex].password);
+        Serial.println("[INFO] Hash: " + String(networks[activeNetworkIndex].hash, HEX));
+        Serial.println("[INFO] Use 'CONFIG_SAVE' para guardar la configuración.");
+    }
+}
+
+void ConfigManager::handleNetworkInfo(String params) {
+    params.trim();
+    
+    // Si no hay parámetros, mostrar info de la network activa
+    if (params.length() == 0) {
+        if (!hasActiveNetwork()) {
+            Serial.println("[ERROR] No hay network activa.");
+            Serial.println("[INFO] Use 'NETWORK_LIST' para ver networks disponibles.");
+            return;
+        }
+        
+        SimpleNetwork* active = getActiveNetwork();
+        Serial.println("========================================");
+        Serial.println("      INFO NETWORK ACTIVA");
+        Serial.println("========================================");
+        Serial.println("Nombre:       " + active->name);
+        Serial.println("Password:     " + active->password);
+        Serial.println("Hash:         " + String(active->hash, HEX));
+        Serial.println("Estado:       ACTIVA");
+        Serial.println("Longitud pwd: " + String(active->password.length()) + " caracteres");
+        Serial.println("Segura:       " + String(isPasswordSecure(active->password) ? "Sí" : "No"));
+        Serial.println("========================================");
+        return;
+    }
+    
+    // Buscar network específica por nombre
+    String networkName = params;
+    networkName.trim();
+    networkName.toUpperCase();
+    
+    int networkIndex = findNetworkByName(networkName);
+    if (networkIndex < 0) {
+        Serial.println("[ERROR] Network '" + params + "' no encontrada.");
+        Serial.println("[INFO] Use 'NETWORK_LIST' para ver networks disponibles.");
+        return;
+    }
+    
+    SimpleNetwork* net = &networks[networkIndex];
+    
+    // Mostrar información detallada de la network
+    Serial.println("========================================");
+    Serial.println("      INFO NETWORK: " + net->name);
+    Serial.println("========================================");
+    Serial.println("Nombre:       " + net->name);
+    Serial.println("Password:     " + net->password);
+    Serial.println("Hash:         " + String(net->hash, HEX));
+    Serial.println("Estado:       " + String(net->active ? "ACTIVA" : "Inactiva"));
+    Serial.println("Longitud pwd: " + String(net->password.length()) + " caracteres");
+    Serial.println("Segura:       " + String(isPasswordSecure(net->password) ? "Sí" : "No"));
+    Serial.println("Índice:       " + String(networkIndex));
+    
+    // Mostrar validaciones
+    String errorMsg;
+    bool nameValid = (validateNetworkNameAdvanced(net->name, errorMsg).length() > 0);
+    bool passValid = (validatePasswordAdvanced(net->password, net->name, errorMsg).length() > 0);
+    
+    Serial.println("Nombre válido: " + String(nameValid ? "Sí" : "No"));
+    Serial.println("Password válida: " + String(passValid ? "Sí" : "No"));
+    
+    Serial.println("========================================");
+    Serial.println("Uso memoria:  ~" + String(net->name.length() + net->password.length() + 35) + " bytes");
+    Serial.println("========================================");
+}
+
+void ConfigManager::handleNetworkDelete(String params) {
+    params.trim();
+    
+    // Verificar que se especificó un nombre
+    if (params.length() == 0) {
+        Serial.println("[ERROR] Formato: NETWORK_DELETE <nombre>");
+        Serial.println("[INFO] Use 'NETWORK_LIST' para ver networks disponibles.");
+        return;
+    }
+    
+    String networkName = params;
+    networkName.trim();
+    String originalName = networkName;
+    networkName.toUpperCase();
+    
+    // Verificar si se puede eliminar (validaciones de seguridad)
+    String errorMsg;
+    if (!canDeleteNetwork(networkName, errorMsg)) {
+        Serial.println("[ERROR] " + errorMsg);
+        return;
+    }
+    
+    // Buscar la network a eliminar
+    int networkIndex = findNetworkByName(networkName);
+    if (networkIndex < 0) {
+        Serial.println("[ERROR] Network '" + originalName + "' no encontrada.");
+        return;
+    }
+    
+    SimpleNetwork* networkToDelete = &networks[networkIndex];
+    bool isDeletingActive = networkToDelete->active;
+    
+    // Mostrar información de la network a eliminar
+    Serial.println("========================================");
+    Serial.println("      CONFIRMAR ELIMINACIÓN");
+    Serial.println("========================================");
+    Serial.println("Network a eliminar: " + networkToDelete->name);
+    Serial.println("Password:           " + networkToDelete->password);
+    Serial.println("Hash:               " + String(networkToDelete->hash, HEX));
+    Serial.println("Estado:             " + String(isDeletingActive ? "ACTIVA" : "Inactiva"));
+    
+    if (isDeletingActive) {
+        Serial.println("");
+        Serial.println("[WARNING] Esta es la network ACTIVA!");
+        Serial.println("[INFO] Se activará automáticamente otra network.");
+    }
+    
+    Serial.println("========================================");
+    Serial.println("¿Está seguro de eliminar esta network?");
+    Serial.println("Esta acción NO se puede deshacer.");
+    Serial.println("");
+    Serial.println("Escriba 'YES' para confirmar o cualquier");
+    Serial.println("otra cosa para cancelar:");
+    
+    Serial.println("");
+    Serial.println("[INFO] Comando preparado. La eliminación se ejecutará");
+    Serial.println("[INFO] cuando escriba: NETWORK_DELETE_CONFIRM " + networkName);
+    Serial.println("[INFO] o cancele con cualquier otro comando.");
+    
+    return;
+}
+
+void ConfigManager::handleNetworkDeleteConfirm(String params) {
+    params.trim();
+    
+    if (params.length() == 0) {
+        Serial.println("[ERROR] Formato: NETWORK_DELETE_CONFIRM <nombre>");
+        return;
+    }
+    
+    String networkName = params;
+    networkName.toUpperCase();
+    
+    // Verificar nuevamente que se puede eliminar
+    String errorMsg;
+    if (!canDeleteNetwork(networkName, errorMsg)) {
+        Serial.println("[ERROR] " + errorMsg);
+        return;
+    }
+    
+    // Buscar la network a eliminar
+    int networkIndex = findNetworkByName(networkName);
+    if (networkIndex < 0) {
+        Serial.println("[ERROR] Network '" + params + "' no encontrada.");
+        return;
+    }
+    
+    SimpleNetwork* networkToDelete = &networks[networkIndex];
+    bool isDeletingActive = networkToDelete->active;
+    String deletedName = networkToDelete->name;
+    
+    // Eliminar la network (mover todas las siguientes una posición hacia atrás)
+    for (int i = networkIndex; i < networkCount - 1; i++) {
+        networks[i] = networks[i + 1];
+    }
+    
+    // Reducir contador
+    networkCount--;
+    
+    // Si eliminamos la network activa, activar otra
+    if (isDeletingActive) {
+        if (networkCount > 0) {
+            // Activar la primera network disponible
+            networks[0].active = true;
+            activeNetworkIndex = 0;
+            
+            // Desactivar todas las demás
+            for (int i = 1; i < networkCount; i++) {
+                networks[i].active = false;
+            }
+            
+            Serial.println("[INFO] Network '" + networks[0].name + "' activada automáticamente.");
+        } else {
+            // No quedan networks
+            activeNetworkIndex = -1;
+            Serial.println("[INFO] No quedan networks. Sistema sin network activa.");
+        }
+    } else {
+        // Ajustar el índice activo si es necesario
+        if (activeNetworkIndex > networkIndex) {
+            activeNetworkIndex--;
+        }
+    }
+    
+    // Confirmar eliminación
+    Serial.println("========================================");
+    Serial.println("[OK] Network '" + deletedName + "' eliminada exitosamente.");
+    Serial.println("Networks restantes: " + String(networkCount) + "/" + String(MAX_NETWORKS));
+    
+    if (hasActiveNetwork()) {
+        SimpleNetwork* active = getActiveNetwork();
+        Serial.println("Network activa: " + active->name);
+    } else {
+        Serial.println("Network activa: NINGUNA");
+    }
+    
+    Serial.println("========================================");
+    Serial.println("[INFO] Use 'CONFIG_SAVE' para guardar los cambios.");
 }
 
 /*
@@ -724,563 +1118,4 @@ String ConfigManager::getRegionString(LoRaRegion region) {
         case REGION_JP: return "JP";
         default: return "UNKNOWN";
     }
-}
-
-/*
- * ============================================================================
- * BLOQUE D: NETWORK SECURITY COMMANDS - IMPLEMENTACIÓN FUNCIONAL
- * ============================================================================
- * 
- */
-
-void ConfigManager::handleNetworkCreate(String params) {
-    params.trim();
-    int pskIndex = params.indexOf(" PSK ");
-    
-    // Debug del parsing
-    Serial.println("[DEBUG] Full command: '" + params + "'");
-    Serial.println("[DEBUG] PSK index: " + String(pskIndex));
-    
-    // Inicializar NetworkSecurity si no está inicializado
-    NetworkSecurity::init();
-    
-    if (pskIndex == -1) {
-        // Solo nombre de canal - PSK auto-generada
-        if (params.length() == 0 || params.length() > MAX_CHANNEL_NAME_LENGTH) {
-            Serial.println("[ERROR] Nombre de canal inválido (1-" + String(MAX_CHANNEL_NAME_LENGTH) + " caracteres)");
-            return;
-        }
-        
-        // Crear canal usando NetworkSecurity
-        if (NetworkSecurity::createChannel(params.c_str())) {
-            // Obtener información del canal creado
-            ChannelSettings newChannel;
-            if (NetworkSecurity::getChannelInfo(params.c_str(), &newChannel)) {
-                uint32_t channelHash = NetworkSecurity::generateHash(&newChannel);
-                
-                char pskBase64[64];
-                NetworkSecurity::pskToBase64(newChannel.psk.bytes, newChannel.psk.size, pskBase64, sizeof(pskBase64));
-                
-                Serial.println("[OK] Canal '" + params + "' creado exitosamente");
-                Serial.println("[INFO] PSK: " + String(pskBase64));
-                Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);
-            }
-        } else {
-            Serial.println("[ERROR] No se pudo crear el canal '" + params + "'");
-        }
-        
-    } else {
-        // CORREGIDO: Nombre + PSK específica
-        String channelName = params.substring(0, pskIndex);
-        // BUG FIX: Cambiar de +5 a +4 para saltar exactamente " PSK"
-        String pskString = params.substring(pskIndex + 4);
-        channelName.trim();
-        pskString.trim();
-        
-        // Debug del parsing
-        Serial.println("[DEBUG] Channel name: '" + channelName + "'");
-        Serial.println("[DEBUG] PSK string: '" + pskString + "'");
-        
-        if (channelName.length() == 0 || channelName.length() > MAX_CHANNEL_NAME_LENGTH) {
-            Serial.println("[ERROR] Nombre de canal inválido");
-            return;
-        }
-        
-        if (pskString.length() == 0) {
-            Serial.println("[ERROR] PSK no puede estar vacío");
-            return;
-        }
-        
-        // Crear canal con PSK específica
-        if (NetworkSecurity::createChannelWithPSK(channelName.c_str(), pskString.c_str())) {
-            // Obtener información del canal creado
-            ChannelSettings newChannel;
-            if (NetworkSecurity::getChannelInfo(channelName.c_str(), &newChannel)) {
-                uint32_t channelHash = NetworkSecurity::generateHash(&newChannel);
-                
-                char actualPsk[64];
-                NetworkSecurity::pskToBase64(newChannel.psk.bytes, newChannel.psk.size, actualPsk, sizeof(actualPsk));
-                
-                Serial.println("[OK] Canal '" + channelName + "' creado con PSK específico");
-                Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);
-                Serial.println("[INFO] PSK verificado: " + String(actualPsk));
-            }
-        } else {
-            Serial.println("[ERROR] No se pudo crear el canal con PSK específico");
-            Serial.println("[ERROR] Verificar formato PSK (debe ser Base64 válido)");
-        }
-    }
-    
-    saveConfig();
-    Serial.println("[AUTO-SAVE] Configuración guardada en EEPROM");
-}
-
-void ConfigManager::handleNetworkJoin(String params) {
-    params.trim();
-    int pskIndex = params.indexOf(" PSK ");
-    
-    // Inicializar NetworkSecurity si no está inicializado
-    NetworkSecurity::init();
-    
-    if (pskIndex == -1) {
-        // Solo nombre de canal - buscar existente
-        if (params.length() == 0) {
-            Serial.println("[ERROR] Formato: NETWORK_JOIN <nombre> [PSK <psk>]");
-            return;
-        }
-        
-        // Unirse al canal usando NetworkSecurity
-        if (NetworkSecurity::joinChannel(params.c_str())) {
-            uint32_t channelHash = NetworkSecurity::getHash();
-            Serial.println("[OK] Conectado al canal '" + params + "'");
-            Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);  // ← HASH REAL
-        } else {
-            Serial.println("[ERROR] No se pudo conectar al canal '" + params + "'");
-        }
-        
-    } else {
-        // Nombre + PSK - crear o unirse
-        String channelName = params.substring(0, pskIndex);
-        String pskString = params.substring(pskIndex + 5);
-        channelName.trim();
-        pskString.trim();
-        
-        if (channelName.length() == 0) {
-            Serial.println("[ERROR] Nombre de canal inválido");
-            return;
-        }
-        
-        // Unirse con PSK específica
-        if (NetworkSecurity::joinChannelWithPSK(channelName.c_str(), pskString.c_str())) {
-            uint32_t channelHash = NetworkSecurity::getHash();
-            Serial.println("[OK] Conectado al canal '" + channelName + "' con PSK específica");
-            Serial.printf("[INFO] Hash del canal: 0x%08X\n", channelHash);  // ← HASH REAL
-        } else {
-            Serial.println("[ERROR] No se pudo conectar al canal con PSK específica");
-        }
-    }
-    
-    saveConfig();
-    Serial.println("[AUTO-SAVE] Canal activo guardado en EEPROM");
-}
-
-void ConfigManager::handleNetworkList() {
-    Serial.println("\n========== LISTA DE CANALES ==========");
-    
-    // Inicializar NetworkSecurity si no está inicializado
-    NetworkSecurity::init();
-    
-    size_t channelCount = NetworkSecurity::getChannelCount();
-    const char* activeChannelName = NetworkSecurity::getActiveChannelName();
-    
-    if (channelCount == 0) {
-        Serial.println("No hay canales configurados");
-        Serial.println("Use NETWORK_CREATE <nombre> para crear un canal");
-        Serial.println("======================================\n");
-        return;
-    }
-    
-    // Listar todos los channels usando NetworkSecurity
-    int index = 0;
-    NetworkSecurity::listChannels([&](const ChannelSettings& channel) {
-        // Generar hash real usando NetworkSecurity
-        uint32_t channelHash = NetworkSecurity::generateHash(&channel);
-        
-        // Formatear PSK para mostrar
-        char pskBase64[64];
-        NetworkSecurity::pskToBase64(channel.psk.bytes, channel.psk.size, pskBase64, sizeof(pskBase64));
-        
-        // Determinar si es el canal activo
-        bool isActive = (strcmp(channel.name, activeChannelName) == 0);
-        String status = isActive ? " (ACTIVO)" : "";
-        
-        Serial.println("Canal " + String(index) + ": " + String(channel.name) + status);
-        Serial.println("  PSK: " + String(pskBase64));
-        Serial.printf("  Hash: 0x%08X\n", channelHash);  // ← HASH REAL de 32-bit
-        Serial.println("  ID: " + String(channel.id));
-        Serial.println("  Encriptado: " + String(channel.encrypted ? "Sí" : "No"));
-        Serial.println("  Visible: " + String(channel.discoverable ? "Sí" : "No"));
-        Serial.println("");
-        
-        index++;
-    });
-    
-    Serial.println("Total: " + String(channelCount) + " canales");
-    Serial.println("Canal activo: " + String(activeChannelName));
-    Serial.println("=======================================\n");
-}
-
-void ConfigManager::handleNetworkInfo(String channelName) {
-    channelName.trim();
-    
-    if (channelName.length() == 0) {
-        Serial.println("[ERROR] Formato: NETWORK_INFO <nombre>");
-        return;
-    }
-    
-    // Inicializar NetworkSecurity si no está inicializado
-    NetworkSecurity::init();
-    
-    // Buscar canal usando NetworkSecurity
-    ChannelSettings channelInfo;
-    if (!NetworkSecurity::getChannelInfo(channelName.c_str(), &channelInfo)) {
-        Serial.println("[ERROR] Canal '" + channelName + "' no encontrado");
-        Serial.println("[INFO] Use NETWORK_LIST para ver canales disponibles");
-        return;
-    }
-    
-    // Generar hash real
-    uint32_t channelHash = NetworkSecurity::generateHash(&channelInfo);
-    
-    // Formatear PSK para mostrar
-    char pskBase64[64];
-    NetworkSecurity::pskToBase64(channelInfo.psk.bytes, channelInfo.psk.size, pskBase64, sizeof(pskBase64));
-    
-    // Determinar si es el canal activo
-    const char* activeChannelName = NetworkSecurity::getActiveChannelName();
-    bool isActive = (strcmp(channelInfo.name, activeChannelName) == 0);
-    
-    // Mostrar información detallada REAL
-    Serial.println("\n=== INFORMACIÓN DEL CANAL ===");
-    Serial.println("Nombre: " + String(channelInfo.name));
-    Serial.println("ID: " + String(channelInfo.id));
-    Serial.println("PSK: " + String(pskBase64));
-    Serial.printf("Hash: 0x%08X\n", channelHash);  // ← HASH REAL de 32-bit
-    Serial.println("Encriptado: " + String(channelInfo.encrypted ? "Sí" : "No"));
-    Serial.println("Visible: " + String(channelInfo.discoverable ? "Sí" : "No"));
-    Serial.println("PSK Auth: " + String(channelInfo.psk_auth ? "Sí" : "No"));
-    Serial.println("Versión: " + String(channelInfo.legacy_config_version));
-    Serial.println("Estado: " + String(isActive ? "ACTIVO" : "Inactivo"));
-    Serial.println("PSK Size: " + String(channelInfo.psk.size) + " bytes");
-    Serial.println("============================\n");
-}
-
-void ConfigManager::handleNetworkDelete(String channelName) {
-    channelName.trim();
-    
-    if (channelName.length() == 0) {
-        Serial.println("[ERROR] Formato: NETWORK_DELETE <nombre>");
-        return;
-    }
-    
-    // Inicializar NetworkSecurity si no está inicializado
-    NetworkSecurity::init();
-    
-    // Verificar que el canal existe
-    ChannelSettings channelInfo;
-    if (!NetworkSecurity::getChannelInfo(channelName.c_str(), &channelInfo)) {
-        Serial.println("[ERROR] Canal '" + channelName + "' no encontrado");
-        Serial.println("[INFO] Use NETWORK_LIST para ver canales disponibles");
-        return;
-    }
-    
-    // No permitir eliminar si es el único canal
-    if (NetworkSecurity::getChannelCount() == 1) {
-        Serial.println("[ERROR] No se puede eliminar el único canal");
-        Serial.println("[INFO] Cree otro canal primero");
-        return;
-    }
-    
-    // Eliminar canal usando NetworkSecurity
-    if (NetworkSecurity::deleteChannel(channelName.c_str())) {
-        Serial.println("[OK] Canal '" + channelName + "' eliminado exitosamente");
-        Serial.println("[INFO] Canales restantes: " + String(NetworkSecurity::getChannelCount()));
-        
-        saveConfig();
-        Serial.println("[AUTO-SAVE] Cambios guardados en EEPROM");
-    } else {
-        Serial.println("[ERROR] No se pudo eliminar el canal '" + channelName + "'");
-    }
-}
-
-// Función para obtener nombre del canal activo
-String ConfigManager::getActiveChannelName() {
-    NetworkSecurity::init();
-    return String(NetworkSecurity::getActiveChannelName());
-}
-
-void ConfigManager::handleTestEncrypt() {
-    Serial.println("\n[TEST] === ENCRYPTION VERIFICATION ===");
-    
-    // Verificar estado del sistema
-    Serial.printf("[TEST] Active channel: %s\n", NetworkSecurity::getActiveChannelName());
-    Serial.printf("[TEST] Channel hash: 0x%08X\n", NetworkSecurity::getHash());
-    Serial.printf("[TEST] Crypto enabled: %s\n", NetworkSecurity::isCryptoEnabled() ? "YES" : "NO");
-    Serial.printf("[TEST] Key size: %d bytes\n", NetworkSecurity::getActiveChannelKeySize());
-    
-    if (crypto) {
-        Serial.printf("[TEST] CryptoEngine key size: %d bytes\n", crypto->getKeySize());
-    } else {
-        Serial.println("[TEST] ERROR: Global crypto engine not initialized");
-        return;
-    }
-    
-    // Test data para encriptar
-    const char* testData = "TEST_GPS_DATA_123456";
-    uint8_t testPayload[32];
-    strncpy((char*)testPayload, testData, sizeof(testPayload) - 1);
-    testPayload[31] = '\0';
-    
-    size_t payloadLength = strlen(testData);
-    
-    Serial.printf("[TEST] Original payload: '%s' (%d bytes)\n", testData, payloadLength);
-    
-    // Mostrar payload original en hex
-    Serial.print("[TEST] Original hex: ");
-    for (size_t i = 0; i < payloadLength; i++) {
-        Serial.printf("%02X ", testPayload[i]);
-    }
-    Serial.println();
-    
-    // Crear un packet de test
-    LoRaPacket testPacket = {};
-    testPacket.messageType = MSG_GPS_DATA;
-    testPacket.sourceID = 999;  // ID de test
-    testPacket.destinationID = LORA_BROADCAST_ADDR;
-    testPacket.hops = 0;
-    testPacket.maxHops = 3;
-    testPacket.packetID = 12345;  // ID de test
-    testPacket.channelHash = NetworkSecurity::getHash();
-    testPacket.payloadLength = payloadLength;
-    
-    // Copiar payload original
-    memcpy(testPacket.payload, testPayload, payloadLength);
-    
-    Serial.printf("[TEST] Packet created with channel hash: 0x%08X\n", testPacket.channelHash);
-    
-    // Aplicar encriptación usando la misma lógica que sendPacket()
-    if (NetworkSecurity::isCryptoEnabled()) {
-        Serial.println("[TEST] Applying encryption...");
-        
-        NetworkSecurity::setCryptoForActiveChannel();
-        
-        if (crypto && crypto->getKeySize() > 0) {
-            crypto->encrypt(testPacket.sourceID, testPacket.packetID, 
-                           testPacket.payloadLength, testPacket.payload);
-            
-            Serial.println("[TEST] Encryption applied successfully");
-            
-            // Mostrar payload encriptado en hex
-            Serial.print("[TEST] Encrypted hex: ");
-            for (size_t i = 0; i < payloadLength; i++) {
-                Serial.printf("%02X ", testPacket.payload[i]);
-            }
-            Serial.println();
-            
-            // Verificar que el payload cambió
-            bool changed = false;
-            for (size_t i = 0; i < payloadLength; i++) {
-                if (testPacket.payload[i] != testPayload[i]) {
-                    changed = true;
-                    break;
-                }
-            }
-            
-            if (changed) {
-                Serial.println("[TEST] SUCCESS: Payload was encrypted (different from original)");
-                Serial.println("[TEST] ENCRYPTION INTEGRATION IS WORKING!");
-            } else {
-                Serial.println("[TEST] FAILURE: Payload was NOT encrypted (same as original)");
-            }
-            
-        } else {
-            Serial.println("[TEST] FAILURE: Crypto engine not ready");
-        }
-    } else {
-        Serial.println("[TEST] No encryption applied (no PSK configured)");
-        Serial.println("[TEST] TIP: Use NETWORK_CREATE <channel_name> to create a channel first");
-    }
-    
-    Serial.println("[TEST] ================================\n");
-}
-
-/*
- * TEST_DECRYPT - Probar sistema de decriptación y filtrado
- */
-void ConfigManager::handleTestDecrypt() {
-    Serial.println("[TEST] === DECRYPTION & FILTERING TEST ===");
-    
-    // Verificar canal activo
-    String activeChannelStr = getActiveChannelName();
-    const char* activeChannel = activeChannelStr.c_str();
-    Serial.printf("[TEST] Active channel: %s\n", activeChannel);
-    
-    if (strcmp(activeChannel, "default") == 0) {
-        Serial.println("[TEST] WARNING: No channel configured - create one with NETWORK_CREATE");
-        return;
-    }
-    
-    // Verificar hash del canal activo
-    uint32_t activeHash = NetworkSecurity::getHash();
-    Serial.printf("[TEST] Active channel hash: 0x%08X\n", activeHash);
-    
-    // Test 1: Validar packet del canal correcto
-    Serial.println("[TEST] --- Test 1: Valid Channel Hash ---");
-    bool validResult = NetworkSecurity::isValidForActiveChannel(activeHash);
-    Serial.printf("[TEST] isValidForActiveChannel(0x%08X): %s\n", 
-                  activeHash, validResult ? "PASS" : "FAIL");
-    
-    // Test 2: Rechazar packet de canal diferente
-    Serial.println("[TEST] --- Test 2: Invalid Channel Hash ---");
-    uint32_t invalidHash = 0xDEADBEEF;  // Hash falso
-    bool invalidResult = NetworkSecurity::isValidForActiveChannel(invalidHash);
-    Serial.printf("[TEST] isValidForActiveChannel(0x%08X): %s\n", 
-                  invalidHash, invalidResult ? "FAIL" : "PASS");
-    
-    // Test 3: Detectar packet encriptado
-    Serial.println("[TEST] --- Test 3: Packet Encryption Detection ---");
-    LoRaPacket testPacket = {};
-    testPacket.messageType = MSG_GPS_DATA;
-    testPacket.sourceID = 999;
-    testPacket.channelHash = activeHash;  // Canal correcto
-    testPacket.payloadLength = 16;
-    
-    // Simular payload (normalmente vendría encriptado)
-    strcpy((char*)testPacket.payload, "TEST_PAYLOAD_123");
-    
-    bool isEncrypted = NetworkSecurity::isPacketEncrypted(&testPacket);
-    Serial.printf("[TEST] Packet appears encrypted: %s\n", isEncrypted ? "YES" : "NO");
-    
-    // Test 4: Intentar decriptación
-    Serial.println("[TEST] --- Test 4: Decryption Attempt ---");
-    if (NetworkSecurity::isCryptoEnabled()) {
-        bool decryptSuccess = NetworkSecurity::attemptDecrypt(&testPacket);
-        Serial.printf("[TEST] Decryption attempt: %s\n", decryptSuccess ? "SUCCESS" : "FAILED");
-        
-        if (decryptSuccess) {
-            Serial.println("[TEST] Payload after decryption attempt:");
-            Serial.printf("[TEST] '%s'\n", (char*)testPacket.payload);
-        }
-    } else {
-        Serial.println("[TEST] Crypto disabled - decryption not needed");
-    }
-    
-    // Test 5: Mostrar estadísticas de seguridad actuales
-    Serial.println("[TEST] --- Test 5: Security Statistics ---");
-    extern LoRaManager loraManager;
-    LoRaStats stats = loraManager.getStats();
-    
-    Serial.printf("[TEST] Packets ignored: %u\n", stats.packetsIgnored);
-    Serial.printf("[TEST] Decryption failures: %u\n", stats.decryptionFailures);
-    Serial.printf("[TEST] Channel mismatches: %u\n", stats.channelMismatches);
-    Serial.printf("[TEST] Valid packets processed: %u\n", stats.validPacketsProcessed);
-    Serial.printf("[TEST] Encrypted packets received: %u\n", stats.encryptedPacketsReceived);
-    Serial.printf("[TEST] Unencrypted packets received: %u\n", stats.unencryptedPacketsReceived);
-    
-    // Resumen final
-    Serial.println("[TEST] === TEST SUMMARY ===");
-    Serial.printf("[TEST] Channel validation: %s\n", 
-                  (validResult && !invalidResult) ? "WORKING" : "FAILED");
-    Serial.printf("[TEST] Crypto system: %s\n", 
-                  NetworkSecurity::isCryptoEnabled() ? "ENABLED" : "DISABLED");
-    Serial.println("[TEST] 🎉 PHASE 4 DECRYPTION & FILTERING TEST COMPLETED!");
-}
-
-/*
- * STATS - Mostrar estadísticas completas (básicas + mesh + seguridad)
- */
-void ConfigManager::handleStats() {
-    // Primero llamar a las funciones existentes del LoRaManager
-    extern LoRaManager loraManager;
-    
-    // Mostrar estadísticas básicas del LoRa
-    loraManager.printStats();
-    
-    // Mostrar estadísticas mesh
-    loraManager.printMeshStats();
-    
-    // NUEVO: Mostrar estadísticas de seguridad (Fase 4)
-    Serial.println("\n[LoRa] === ESTADÍSTICAS DE SEGURIDAD ===");
-    
-    LoRaStats stats = loraManager.getStats();
-    
-    // Canal activo
-    String activeChannelStr = getActiveChannelName();
-    const char* activeChannel = activeChannelStr.c_str();
-    Serial.println("Canal activo: " + String(activeChannel));
-    
-    // Hash del canal
-    if (strcmp(activeChannel, "default") != 0) {
-        uint32_t channelHash = NetworkSecurity::getHash();
-        Serial.printf("Hash del canal: 0x%08X\n", channelHash);
-    }
-    
-    // Estado de crypto
-    Serial.println("Encriptación: " + String(NetworkSecurity::isCryptoEnabled() ? "HABILITADA" : "DESHABILITADA"));
-    
-    // Contadores de Fase 4
-    Serial.println("Packets ignorados (otros canales): " + String(stats.packetsIgnored));
-    Serial.println("Channel hash mismatches: " + String(stats.channelMismatches));
-    Serial.println("Packets válidos procesados: " + String(stats.validPacketsProcessed));
-    Serial.println("Packets encriptados recibidos: " + String(stats.encryptedPacketsReceived));
-    Serial.println("Packets sin encriptar recibidos: " + String(stats.unencryptedPacketsReceived));
-    Serial.println("Fallos de decriptación: " + String(stats.decryptionFailures));
-    
-    Serial.println("========================================");
-}
-
-void ConfigManager::handleNetworkShowPSK() {
-    // Inicializar NetworkSecurity si no está inicializado
-    NetworkSecurity::init();
-    
-    // Verificar que hay canal activo
-    if (NetworkSecurity::getActiveChannelIndex() < 0) {
-        Serial.println("[ERROR] No hay canal activo");
-        Serial.println("[INFO] Use NETWORK_CREATE o NETWORK_JOIN primero");
-        return;
-    }
-    
-    // Obtener información del canal activo
-    const char* channelName = NetworkSecurity::getActiveChannelName();
-    if (!channelName || strlen(channelName) == 0) {
-        Serial.println("[ERROR] Canal activo no válido");
-        return;
-    }
-    
-    // Obtener configuración del canal
-    ChannelSettings channelInfo;
-    if (!NetworkSecurity::getChannelInfo(channelName, &channelInfo)) {
-        Serial.println("[ERROR] No se pudo obtener información del canal");
-        return;
-    }
-    
-    // Convertir PSK a Base64
-    char pskBase64[64];
-    NetworkSecurity::pskToBase64(channelInfo.psk.bytes, channelInfo.psk.size, pskBase64, sizeof(pskBase64));
-    
-    // Mostrar información del PSK
-    Serial.println("========== PSK INFO ==========");
-    Serial.printf("Canal: %s\n", channelName);
-    Serial.printf("PSK: %s\n", pskBase64);
-    Serial.printf("Hash: 0x%08X\n", NetworkSecurity::getHash());
-    Serial.printf("Tamaño: %d bytes\n", channelInfo.psk.size);
-    Serial.println("==============================");
-    
-    Serial.println("[INFO] Use este PSK para configurar otros dispositivos");
-    Serial.printf("[INFO] Comando: --psk %s\n", pskBase64);
-}
-
-void ConfigManager::handleNetworkTestPSK(String params) {
-    params.trim();
-    
-    Serial.println("=== TEST PSK PARSING ===");
-    Serial.println("Input: '" + params + "'");
-    
-    int pskIndex = params.indexOf(" PSK ");
-    Serial.println("PSK index: " + String(pskIndex));
-    
-    if (pskIndex != -1) {
-        String channelName = params.substring(0, pskIndex);
-        String pskString1 = params.substring(pskIndex + 4);  // +4
-        String pskString2 = params.substring(pskIndex + 5);  // +5
-        
-        channelName.trim();
-        pskString1.trim();
-        pskString2.trim();
-        
-        Serial.println("Channel: '" + channelName + "'");
-        Serial.println("PSK (+4): '" + pskString1 + "'");
-        Serial.println("PSK (+5): '" + pskString2 + "'");
-    }
-    Serial.println("========================");
 }

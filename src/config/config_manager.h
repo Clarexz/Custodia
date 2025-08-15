@@ -3,8 +3,6 @@
  * 
  * MODULARIZADO: Separación entre core y comandos
  * Declaraciones centralizadas para todo el sistema de configuración
- * 
- * BLOQUE D: Agregadas declaraciones para comandos NETWORK_*
  */
 
 #ifndef CONFIG_MANAGER_H
@@ -58,19 +56,41 @@ enum LoRaRegion {
 #define FREQ_AS_MHZ     433.0f  // Asia
 #define FREQ_JP_MHZ     920.0f  // Japón
 
-// ============== NETWORK CHANNELS EEPROM KEYS ==============
-// IMPORTANTE: Basado en pattern de Meshtastic NodeDB.cpp
-#define EEPROM_CHANNEL_COUNT_KEY    "net_ch_cnt"     // Número de channels configurados
-#define EEPROM_ACTIVE_CHANNEL_KEY   "active_ch"      // Índice del channel activo
-#define EEPROM_CHANNEL_NAME_PREFIX  "ch_"            // ch_0_name, ch_1_name, etc.
-#define EEPROM_CHANNEL_PSK_PREFIX   "psk_"           // psk_0, psk_1, etc.
+// Constantes para EEPROM storage de networks
+#define NETWORK_COUNT_KEY      "net_count"
+#define ACTIVE_NETWORK_KEY     "active_net"
+#define NETWORK_NAME_PREFIX    "net_name_"    // net_name_0, net_name_1, etc.
+#define NETWORK_PASS_PREFIX    "net_pass_"    // net_pass_0, net_pass_1, etc.
+#define NETWORK_HASH_PREFIX    "net_hash_"    // net_hash_0, net_hash_1, etc.
+#define MAX_NETWORKS           10             // Máximo networks por dispositivo
 
-// Límites de channels (siguiendo Meshtastic limits)
-#define MAX_CHANNELS                8                // Máximo 8 channels como Meshtastic
-#define MAX_CHANNEL_NAME_LENGTH     30               // Nombre máximo 11 chars
-#define MAX_PSK_LENGTH             32               // PSK máximo 32 bytes (AES-256)
-
-// =========================================================
+// Estructura simple para networks
+struct SimpleNetwork {
+    String name;        // Convertido a uppercase automáticamente
+    String password;    // Convertido a uppercase, 8-32 chars
+    uint32_t hash;      // hash(name + password)
+    bool active;        // true si es la network activa
+    
+    // Constructor por defecto
+    SimpleNetwork() : hash(0), active(false) {}
+    
+    // Constructor con parámetros
+    SimpleNetwork(String n, String p) : name(n), password(p), active(false) {
+        name.toUpperCase();
+        password.toUpperCase();
+        hash = generateHash();
+    }
+    
+    // Generar hash de la network
+    uint32_t generateHash() {
+        String combined = name + password;
+        uint32_t h = 0;
+        for (int i = 0; i < combined.length(); i++) {
+            h = h * 31 + combined.charAt(i);
+        }
+        return h;
+    }
+};
 
 /*
  * ESTRUCTURAS DE DATOS
@@ -87,10 +107,6 @@ struct DeviceConfig {
     RadioProfile radioProfile; // NUEVO: Perfil LoRa actual
     bool configValid;        // Flag que indica si la configuración es válida
     char version[8];         // Versión del firmware para compatibilidad
-    //Basado en Meshtastic Channels.cpp structure
-    uint8_t activeChannelIndex;                    // Índice del channel activo (0-7)
-    char activeChannelName[MAX_CHANNEL_NAME_LENGTH + 1]; // Nombre del channel activo
-    bool hasActiveChannel;                         // Flag si hay channel configurado
 };
 
 /*
@@ -107,17 +123,32 @@ private:
     // Estado actual del sistema
     SystemState currentState;
 
-    // Estructura simple para channels en memoria
-    struct SimpleChannel {
-        String name;
-        String psk;
-        bool active;
-    };
+    // ===== NUEVAS VARIABLES PARA NETWORKS =====
+    // Lista de networks disponibles
+    SimpleNetwork networks[MAX_NETWORKS];
     
-    // Array de channels y contadores
-    SimpleChannel networkChannels[MAX_CHANNELS];
-    int channelCount;
-    int activeChannelIndex;
+    // Número actual de networks guardadas
+    uint8_t networkCount;
+    
+    // Índice de la network actualmente activa (-1 si ninguna)
+    int8_t activeNetworkIndex;
+    
+    // ===== NUEVOS MÉTODOS PRIVADOS PARA NETWORKS =====
+    void loadNetworks();           // Cargar networks desde EEPROM
+    void saveNetworks();           // Guardar networks a EEPROM
+    bool isValidNetworkName(String name);    // Validar nombre de network
+    bool isValidPassword(String password);   // Validar password
+    int findNetworkByName(String name);      // Buscar network por nombre
+    String generateRandomPassword();         // Generar password aleatoria
+
+    bool isReservedNetworkName(String name);     // Verificar nombres reservados
+    bool isPasswordSecure(String password);      // Validar seguridad de password
+    bool hasNumberAndLetter(String password);    // Verificar que tenga número y letra
+    String validateNetworkNameAdvanced(String name, String& errorMsg);  // Validación completa con mensaje
+    String validatePasswordAdvanced(String password, String networkName, String& errorMsg);  // Validación completa
+    bool canDeleteNetwork(String name, String& errorMsg);  // Verificar si se puede eliminar network
+    uint16_t getEEPROMUsageBytes();            // Calcular memoria EEPROM usada
+    uint16_t getAvailableEEPROMBytes();        // Calcular memoria EEPROM disponible
     
     /*
      * MÉTODOS PRIVADOS
@@ -156,6 +187,36 @@ public:
     void setGpsInterval(uint16_t interval);
     void setDataMode(DataDisplayMode mode);
     String getCurrentDataModeString();
+
+    /*
+     * ===== NUEVOS MÉTODOS PÚBLICOS PARA NETWORKS =====
+     */
+    
+    // Obtener network activa actual
+    SimpleNetwork* getActiveNetwork();
+    
+    // Obtener hash de la network activa (para packets LoRa)
+    uint32_t getActiveNetworkHash();
+    
+    // Verificar si hay una network activa
+    bool hasActiveNetwork();
+    
+    // Obtener número de networks guardadas
+    uint8_t getNetworkCount() { return networkCount; }
+    
+    // Obtener network por índice (para listar)
+    SimpleNetwork* getNetwork(uint8_t index);
+    
+    /*
+     * MÉTODOS DE COMANDOS (manejadores)
+     */
+    void handleNetworkCreate(String params);
+    void handleNetworkJoin(String params);
+    void handleNetworkList();
+    void handleNetworkInfo(String params);
+    void handleNetworkStatus();
+    void handleNetworkDelete(String params);
+    void handleNetworkDeleteConfirm(String params);
     
     // NUEVOS: Radio Profiles getters/setters
     RadioProfile getRadioProfile() { return config.radioProfile; }
@@ -183,20 +244,7 @@ public:
     void handleStatus();
     void handleHelp();
     
-    // ========== BLOQUE D: NETWORK SECURITY HANDLERS ==========
-    void handleNetworkCreate(String params);
-    void handleNetworkJoin(String params);
-    void handleNetworkList();
-    void handleNetworkInfo(String channelName);
-    void handleNetworkDelete(String channelName);
-    void handleTestEncrypt();
-    void handleTestDecrypt();
-    void handleStats();
-    void handleNetworkShowPSK();
-    void handleNetworkTestPSK(String params);
-    // ==========================================================
-    
-    // Radio Profiles handlers
+    // NUEVOS: Radio Profiles handlers
     void handleConfigRadioProfile(String value);
     void handleRadioProfileCustom(String param, String value);
     void handleRadioProfileApply();
@@ -209,7 +257,6 @@ public:
     String getStateString(SystemState state);
     String getDataModeString(DataDisplayMode mode);
     String getRegionString(LoRaRegion region);
-    String getActiveChannelName();
 };
 
 /*

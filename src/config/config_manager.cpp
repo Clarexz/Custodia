@@ -29,14 +29,13 @@ ConfigManager configManager;
 ConfigManager::ConfigManager() {
     currentState = STATE_BOOT;
 
-    channelCount = 0;
-    activeChannelIndex = -1;
+    // ===== INICIALIZAR VARIABLES DE NETWORKS =====
+    networkCount = 0;
+    activeNetworkIndex = -1;  // -1 significa "ninguna network activa"
     
-    // Limpiar array de channels
-    for (int i = 0; i < MAX_CHANNELS; i++) {
-        networkChannels[i].name = "";
-        networkChannels[i].psk = "";
-        networkChannels[i].active = false;
+    // Inicializar array de networks (opcional, pero buena práctica)
+    for (int i = 0; i < MAX_NETWORKS; i++) {
+        networks[i] = SimpleNetwork();  // Constructor por defecto
     }
 }
 
@@ -52,6 +51,9 @@ void ConfigManager::begin() {
     
     // Cargar configuración existente desde EEPROM
     loadConfig();
+
+    // Cargar networks desde EEPROM
+    loadNetworks();
     
     // Mostrar mensaje de bienvenida con información del sistema
     printWelcome();
@@ -136,7 +138,7 @@ void ConfigManager::processSerialInput() {
         handleConfigRegion(input.substring(14));
     }
     
-    // ========== COMANDOS DE RADIO PROFILES ==========
+    // ========== NUEVOS COMANDOS DE RADIO PROFILES ==========
     else if (input.startsWith("CONFIG_RADIO_PROFILE ")) {
         handleConfigRadioProfile(input.substring(21));
     }
@@ -158,36 +160,8 @@ void ConfigManager::processSerialInput() {
     else if (input == "RADIO_PROFILE_STATUS") {
         handleRadioProfileStatus();
     }
+    // ======================================================
     
-    // ========== BLOQUE D: COMANDOS NETWORK_* ==========
-    else if (input.startsWith("NETWORK_CREATE ")) {
-        handleNetworkCreate(input.substring(15));
-    }
-    else if (input.startsWith("NETWORK_JOIN ")) {
-        handleNetworkJoin(input.substring(13));
-    }
-    else if (input == "NETWORK_LIST") {
-        handleNetworkList();
-    }
-    else if (input.startsWith("NETWORK_INFO ")) {
-        handleNetworkInfo(input.substring(13));
-    }
-    else if (input.startsWith("NETWORK_DELETE ")) {
-        handleNetworkDelete(input.substring(15));
-    } // NUEVO: Comando NETWORK_SHOW_PSK
-    else if (input == "NETWORK_SHOW_PSK") {
-        handleNetworkShowPSK();
-    }
-    else if (input.startsWith("NETWORK_TEST_PSK ")) {
-        handleNetworkTestPSK(input.substring(17));
-    }
-    else if (input == "TEST_ENCRYPT") {
-        handleTestEncrypt();
-    } else if (input.startsWith("TEST_DECRYPT")) {
-        handleTestDecrypt();
-    } else if (input == "STATS") {
-        handleStats();
-    }
     else if (input.startsWith("MODE ")) {
         handleModeChange(input.substring(5));
     }
@@ -207,7 +181,7 @@ void ConfigManager::processSerialInput() {
         handleHelp();
     }
     else if (input.startsWith("Q_CONFIG ")) {
-        handleQuickConfig(input.substring(9));
+    handleQuickConfig(input.substring(9));
     }
     else if (input == "START") {
         if (config.configValid) {
@@ -218,6 +192,33 @@ void ConfigManager::processSerialInput() {
         } else {
             Serial.println("[ERROR] Configuración inválida. Configure el dispositivo primero.");
         }
+    }
+    // ========== NUEVOS COMANDOS DE NETWORKS ==========
+    else if (input == "NETWORK_LIST") {
+        handleNetworkList();
+    }
+    else if (input.startsWith("NETWORK_CREATE ")) {
+        handleNetworkCreate(input.substring(15));
+    }
+    else if (input.startsWith("NETWORK_JOIN ")) {
+        handleNetworkJoin(input.substring(13));
+    }
+    else if (input.startsWith("NETWORK_INFO")) {
+        // Manejar tanto "NETWORK_INFO" como "NETWORK_INFO <nombre>"
+        if (input.length() == 12) {
+            handleNetworkInfo("");  // Sin parámetros
+        } else {
+            handleNetworkInfo(input.substring(13));  // Con nombre especifico
+        }
+    }
+    else if (input == "NETWORK_STATUS") {
+        handleNetworkStatus();
+    }
+    else if (input.startsWith("NETWORK_DELETE ")) {
+        handleNetworkDelete(input.substring(15));
+    }
+    else if (input.startsWith("NETWORK_DELETE_CONFIRM ")) {
+        handleNetworkDeleteConfirm(input.substring(23));
     }
     else {
         Serial.println("[ERROR] Comando desconocido. Use 'HELP' para ver comandos disponibles.");
@@ -230,6 +231,7 @@ void ConfigManager::processSerialInput() {
  * CARGA DE CONFIGURACIÓN DESDE EEPROM
  */
 void ConfigManager::loadConfig() {
+    // Cargar cada parámetro con valores por defecto si no existen
     config.role = (DeviceRole)preferences.getUChar("role", ROLE_NONE);
     config.deviceID = preferences.getUShort("deviceID", 0);
     config.gpsInterval = preferences.getUShort("gpsInterval", 30);
@@ -237,59 +239,17 @@ void ConfigManager::loadConfig() {
     config.dataMode = (DataDisplayMode)preferences.getUChar("dataMode", DATA_MODE_ADMIN);
     config.region = (LoRaRegion)preferences.getUChar("region", REGION_US);
     config.configValid = preferences.getBool("configValid", false);
+    
+    // NUEVO: Cargar Radio Profile
     config.radioProfile = (RadioProfile)preferences.getUChar("radioProfile", PROFILE_MESH_MAX_NODES);
     
+    // Establecer versión del firmware actual
     strncpy(config.version, FIRMWARE_VERSION, sizeof(config.version) - 1);
     config.version[sizeof(config.version) - 1] = '\0';
     
+    // Validación adicional
     if (config.role == ROLE_NONE || config.deviceID == 0) {
         config.configValid = false;
-    }
-
-    // ============== NUEVO: CARGAR NETWORK CHANNELS DESDE EEPROM ==============
-    // IMPORTANTE: Basado en pattern de Meshtastic NodeDB.cpp
-    
-    // Cargar cantidad de channels
-    channelCount = preferences.getUChar(EEPROM_CHANNEL_COUNT_KEY, 0);
-    
-    // Cargar índice del channel activo
-    activeChannelIndex = preferences.getChar(EEPROM_ACTIVE_CHANNEL_KEY, -1);
-    
-    // Cargar cada channel individual
-    for (int i = 0; i < channelCount && i < MAX_CHANNELS; i++) {
-        // Construir keys dinámicamente: "ch_0_name", "ch_1_name", etc.
-        String nameKey = String(EEPROM_CHANNEL_NAME_PREFIX) + String(i) + "_name";
-        String pskKey = String(EEPROM_CHANNEL_PSK_PREFIX) + String(i);
-        
-        // Cargar nombre del channel
-        String channelName = preferences.getString(nameKey.c_str(), "");
-        if (channelName.length() > 0) {
-            networkChannels[i].name = channelName;
-            
-            // Cargar PSK del channel
-            networkChannels[i].psk = preferences.getString(pskKey.c_str(), "");
-            
-            // Set active flag
-            networkChannels[i].active = true;
-            
-            Serial.println("[LOAD] Channel " + String(i) + ": " + channelName);
-        }
-    }
-    
-    // Actualizar campos en DeviceConfig para coherencia
-    if (activeChannelIndex >= 0 && activeChannelIndex < channelCount) {
-        config.activeChannelIndex = activeChannelIndex;
-        strncpy(config.activeChannelName, networkChannels[activeChannelIndex].name.c_str(), 
-                MAX_CHANNEL_NAME_LENGTH);
-        config.activeChannelName[MAX_CHANNEL_NAME_LENGTH] = '\0';
-        config.hasActiveChannel = true;
-        
-        Serial.println("[LOAD] Active channel: " + String(config.activeChannelName));
-    } else {
-        config.activeChannelIndex = 0;
-        strcpy(config.activeChannelName, "default");
-        config.hasActiveChannel = false;
-        Serial.println("[LOAD] No active channel found");
     }
 }
 
@@ -297,6 +257,7 @@ void ConfigManager::loadConfig() {
  * GUARDADO DE CONFIGURACIÓN EN EEPROM
  */
 void ConfigManager::saveConfig() {
+    // Guardar cada parámetro en su clave específica
     preferences.putUChar("role", config.role);
     preferences.putUShort("deviceID", config.deviceID);
     preferences.putUShort("gpsInterval", config.gpsInterval);
@@ -304,61 +265,20 @@ void ConfigManager::saveConfig() {
     preferences.putUChar("dataMode", config.dataMode);
     preferences.putUChar("region", config.region);
     preferences.putBool("configValid", config.configValid);
+    
+    // NUEVO: Guardar Radio Profile
     preferences.putUChar("radioProfile", config.radioProfile);
+
+    //  GUARDAR NETWORKS 
+    saveNetworks();
     
     Serial.println("[OK] Configuración guardada exitosamente.");
-
-    // Guardar cantidad total de channels
-    preferences.putUChar(EEPROM_CHANNEL_COUNT_KEY, channelCount);
-    
-    // Guardar índice del channel activo
-    preferences.putChar(EEPROM_ACTIVE_CHANNEL_KEY, activeChannelIndex);
-    
-    // Guardar cada channel individual
-    for (int i = 0; i < channelCount && i < MAX_CHANNELS; i++) {
-        // Construir keys dinámicamente: "ch_0_name", "ch_1_name", etc.
-        String nameKey = String(EEPROM_CHANNEL_NAME_PREFIX) + String(i) + "_name";
-        String pskKey = String(EEPROM_CHANNEL_PSK_PREFIX) + String(i);
-        
-        // Guardar nombre y PSK del channel
-        preferences.putString(nameKey.c_str(), networkChannels[i].name);
-        preferences.putString(pskKey.c_str(), networkChannels[i].psk);
-        
-        Serial.println("[SAVE] Channel " + String(i) + ": " + networkChannels[i].name);
-    }
-    
-    // Limpiar channels que ya no existen (si channelCount se redujo)
-    int previousCount = preferences.getUChar(EEPROM_CHANNEL_COUNT_KEY, 0);
-    for (int i = channelCount; i < previousCount && i < MAX_CHANNELS; i++) {
-        String nameKey = String(EEPROM_CHANNEL_NAME_PREFIX) + String(i) + "_name";
-        String pskKey = String(EEPROM_CHANNEL_PSK_PREFIX) + String(i);
-        
-        preferences.remove(nameKey.c_str());
-        preferences.remove(pskKey.c_str());
-        
-        Serial.println("[SAVE] Cleaned old channel " + String(i));
-    }
-    
-    // Actualizar campos en DeviceConfig para coherencia
-    if (activeChannelIndex >= 0 && activeChannelIndex < channelCount) {
-        config.activeChannelIndex = activeChannelIndex;
-        strncpy(config.activeChannelName, networkChannels[activeChannelIndex].name.c_str(), 
-                MAX_CHANNEL_NAME_LENGTH);
-        config.activeChannelName[MAX_CHANNEL_NAME_LENGTH] = '\0';
-        config.hasActiveChannel = true;
-    } else {
-        config.activeChannelIndex = 0;
-        strcpy(config.activeChannelName, "default");
-        config.hasActiveChannel = false;
-    }
-    
-    Serial.println("[SAVE] Saved " + String(channelCount) + " channels to EEPROM");
-    
 }
 
 /*
  * MÉTODOS PARA GESTIÓN DE REGIÓN
  */
+
 float ConfigManager::getFrequencyMHz() {
     switch (config.region) {
         case REGION_US: return FREQ_US_MHZ;
@@ -366,7 +286,7 @@ float ConfigManager::getFrequencyMHz() {
         case REGION_CH: return FREQ_CH_MHZ;
         case REGION_AS: return FREQ_AS_MHZ;
         case REGION_JP: return FREQ_JP_MHZ;
-        default: return FREQ_US_MHZ;
+        default: return FREQ_US_MHZ; // Default US
     }
 }
 
@@ -378,6 +298,8 @@ void ConfigManager::setDataMode(DataDisplayMode mode) {
 void ConfigManager::setGpsInterval(uint16_t interval) {
     if (interval >= 5 && interval <= 3600) {
         config.gpsInterval = interval;
+        // Para prototipo no guardamos automáticamente en EEPROM
+        // preferences.putUShort("gpsInterval", config.gpsInterval);
     }
 }
 
@@ -385,13 +307,505 @@ String ConfigManager::getCurrentDataModeString() {
     return getDataModeString(config.dataMode);
 }
 
+// ========== NUEVOS MÉTODOS PARA RADIO PROFILES ==========
+
 String ConfigManager::getRadioProfileName() {
     return radioProfileManager.getProfileName(config.radioProfile);
 }
 
 /*
+ * ===== IMPLEMENTACIÓN DE MÉTODOS PÚBLICOS PARA NETWORKS =====
+ */
+
+// Obtener network activa actual
+SimpleNetwork* ConfigManager::getActiveNetwork() {
+    if (activeNetworkIndex >= 0 && activeNetworkIndex < networkCount) {
+        return &networks[activeNetworkIndex];
+    }
+    return nullptr;  // No hay network activa
+}
+
+// Obtener hash de la network activa (para packets LoRa)
+uint32_t ConfigManager::getActiveNetworkHash() {
+    SimpleNetwork* activeNet = getActiveNetwork();
+    if (activeNet != nullptr) {
+        return activeNet->hash;
+    }
+    return 0;  // Hash por defecto si no hay network activa
+}
+
+// Verificar si hay una network activa
+bool ConfigManager::hasActiveNetwork() {
+    return (activeNetworkIndex >= 0 && activeNetworkIndex < networkCount);
+}
+
+// Obtener network por índice (para listar)
+SimpleNetwork* ConfigManager::getNetwork(uint8_t index) {
+    if (index < networkCount) {
+        return &networks[index];
+    }
+    return nullptr;  // Índice fuera de rango
+}
+
+/*
+ * ===== MÉTODOS PRIVADOS DE VALIDACIÓN =====
+ */
+
+// Validar nombre de network
+bool ConfigManager::isValidNetworkName(String name) {
+    // Eliminar espacios y convertir a uppercase
+    name.trim();
+    name.toUpperCase();
+    
+    // Verificar longitud (3-20 caracteres)
+    if (name.length() < 3 || name.length() > 20) {
+        return false;
+    }
+    
+    // Verificar que solo contenga caracteres alfanuméricos y guiones
+    for (int i = 0; i < name.length(); i++) {
+        char c = name.charAt(i);
+        if (!isAlphaNumeric(c) && c != '_' && c != '-') {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// Validar password
+bool ConfigManager::isValidPassword(String password) {
+    // Eliminar espacios y convertir a uppercase
+    password.trim();
+    password.toUpperCase();
+    
+    // Verificar longitud (8-32 caracteres)
+    if (password.length() < 8 || password.length() > 32) {
+        return false;
+    }
+    
+    // Verificar que solo contenga caracteres alfanuméricos
+    for (int i = 0; i < password.length(); i++) {
+        char c = password.charAt(i);
+        if (!isAlphaNumeric(c)) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// Buscar network por nombre (retorna índice o -1 si no se encuentra)
+int ConfigManager::findNetworkByName(String name) {
+    name.trim();
+    name.toUpperCase();
+    
+    for (int i = 0; i < networkCount; i++) {
+        if (networks[i].name.equals(name)) {
+            return i;
+        }
+    }
+    
+    return -1;  // No encontrada
+}
+
+// Generar password aleatoria (8 caracteres alfanuméricos)
+String ConfigManager::generateRandomPassword() {
+    String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    String password = "";
+    
+    // Usar millis() como semilla para mejor aleatoriedad
+    randomSeed(millis());
+    
+    for (int i = 0; i < 8; i++) {
+        password += chars.charAt(random(chars.length()));
+    }
+    
+    return password;
+}
+// Guardar networks a EEPROM
+void ConfigManager::saveNetworks() {
+    // Guardar contador de networks
+    preferences.putUChar(NETWORK_COUNT_KEY, networkCount);
+    
+    // Guardar índice de network activa
+    preferences.putChar(ACTIVE_NETWORK_KEY, activeNetworkIndex);
+    
+    // Guardar cada network
+    for (int i = 0; i < networkCount; i++) {
+        String nameKey = String(NETWORK_NAME_PREFIX) + String(i);
+        String passKey = String(NETWORK_PASS_PREFIX) + String(i);
+        String hashKey = String(NETWORK_HASH_PREFIX) + String(i);
+        
+        preferences.putString(nameKey.c_str(), networks[i].name);
+        preferences.putString(passKey.c_str(), networks[i].password);
+        preferences.putUInt(hashKey.c_str(), networks[i].hash);
+    }
+    
+    Serial.println("[Networks] Guardadas " + String(networkCount) + " networks en EEPROM.");
+}
+
+// Cargar networks desde EEPROM
+void ConfigManager::loadNetworks() {
+    // Cargar contador de networks
+    networkCount = preferences.getUChar(NETWORK_COUNT_KEY, 0);
+    
+    // Cargar índice de network activa
+    activeNetworkIndex = preferences.getChar(ACTIVE_NETWORK_KEY, -1);
+    
+    // Validar datos cargados
+    if (networkCount > MAX_NETWORKS) {
+        Serial.println("[Networks] ERROR: Contador inválido, reseteando networks.");
+        networkCount = 0;
+        activeNetworkIndex = -1;
+        return;
+    }
+    
+    if (activeNetworkIndex >= networkCount) {
+        Serial.println("[Networks] WARNING: Índice activo inválido, corrigiendo.");
+        activeNetworkIndex = networkCount > 0 ? 0 : -1;
+    }
+    
+    // Cargar cada network
+    for (int i = 0; i < networkCount; i++) {
+        String nameKey = String(NETWORK_NAME_PREFIX) + String(i);
+        String passKey = String(NETWORK_PASS_PREFIX) + String(i);
+        String hashKey = String(NETWORK_HASH_PREFIX) + String(i);
+        
+        networks[i].name = preferences.getString(nameKey.c_str(), "");
+        networks[i].password = preferences.getString(passKey.c_str(), "");
+        networks[i].hash = preferences.getUInt(hashKey.c_str(), 0);
+        networks[i].active = (i == activeNetworkIndex);
+        
+        // Validar que la network cargada es válida
+        if (networks[i].name.length() == 0 || networks[i].password.length() == 0) {
+            Serial.println("[Networks] ERROR: Network " + String(i) + " corrupta, reseteando.");
+            networkCount = 0;
+            activeNetworkIndex = -1;
+            return;
+        }
+    }
+    
+    if (networkCount > 0) {
+        Serial.println("[Networks] Cargadas " + String(networkCount) + " networks desde EEPROM.");
+        if (activeNetworkIndex >= 0) {
+            Serial.println("[Networks] Network activa: " + networks[activeNetworkIndex].name);
+        }
+    }
+}
+
+// Verificar si el nombre está en la lista de nombres reservados
+bool ConfigManager::isReservedNetworkName(String name) {
+    name.trim();
+    name.toUpperCase();
+    
+    // Lista de nombres reservados del sistema
+    String reservedNames[] = {
+        "CONFIG", "ADMIN", "DEBUG", "SYSTEM", "DEVICE", 
+        "LORA", "MESH", "NETWORK", "DEFAULT", "TEST",
+        "GPS", "TRACKER", "REPEATER", "RECEIVER"
+    };
+    
+    int numReserved = sizeof(reservedNames) / sizeof(reservedNames[0]);
+    
+    for (int i = 0; i < numReserved; i++) {
+        if (name.equals(reservedNames[i])) {
+            return true;  // Es un nombre reservado
+        }
+    }
+    
+    return false;  // No es reservado
+}
+
+// Verificar que la password tenga al menos un número y una letra
+bool ConfigManager::hasNumberAndLetter(String password) {
+    bool hasNumber = false;
+    bool hasLetter = false;
+    
+    for (int i = 0; i < password.length(); i++) {
+        char c = password.charAt(i);
+        if (isDigit(c)) {
+            hasNumber = true;
+        }
+        if (isAlpha(c)) {
+            hasLetter = true;
+        }
+        
+        // Si ya encontramos ambos, podemos salir temprano
+        if (hasNumber && hasLetter) {
+            return true;
+        }
+    }
+    
+    return (hasNumber && hasLetter);
+}
+
+// Validar que la password cumple criterios de seguridad
+bool ConfigManager::isPasswordSecure(String password) {
+    // Verificar longitud básica (ya se hace en isValidPassword)
+    if (password.length() < 8 || password.length() > 32) {
+        return false;
+    }
+    
+    // Debe tener al menos un número y una letra
+    if (!hasNumberAndLetter(password)) {
+        return false;
+    }
+    
+    // No puede ser una secuencia simple
+    if (password.equals("12345678") || password.equals("ABCDEFGH") || 
+        password.equals("PASSWORD") || password.equals("QWERTYUI")) {
+        return false;
+    }
+    
+    return true;
+}
+
+// Validación completa de nombre de network con mensaje de error detallado
+String ConfigManager::validateNetworkNameAdvanced(String name, String& errorMsg) {
+    // Limpiar y normalizar
+    name.trim();
+    String originalName = name;
+    name.toUpperCase();
+    
+    // Verificar longitud
+    if (name.length() < 3) {
+        errorMsg = "Nombre muy corto. Mínimo 3 caracteres.";
+        return "";
+    }
+    if (name.length() > 20) {
+        errorMsg = "Nombre muy largo. Máximo 20 caracteres.";
+        return "";
+    }
+    
+    // Verificar caracteres válidos
+    for (int i = 0; i < name.length(); i++) {
+        char c = name.charAt(i);
+        if (!isAlphaNumeric(c) && c != '_' && c != '-') {
+            errorMsg = "Carácter inválido '" + String(c) + "'. Use solo letras, números, guiones y underscore.";
+            return "";
+        }
+    }
+    
+    // No puede empezar o terminar con guión/underscore
+    if (name.charAt(0) == '-' || name.charAt(0) == '_' || 
+        name.charAt(name.length()-1) == '-' || name.charAt(name.length()-1) == '_') {
+        errorMsg = "No puede empezar o terminar con guión o underscore.";
+        return "";
+    }
+    
+    // Verificar nombres reservados
+    if (isReservedNetworkName(name)) {
+        errorMsg = "Nombre reservado del sistema. Use otro nombre.";
+        return "";
+    }
+    
+    // Verificar duplicados
+    if (findNetworkByName(name) >= 0) {
+        errorMsg = "Ya existe una network con ese nombre.";
+        return "";
+    }
+    
+    // Todo válido
+    errorMsg = "";
+    return name;
+}
+
+// Validación completa de password con mensaje de error detallado
+String ConfigManager::validatePasswordAdvanced(String password, String networkName, String& errorMsg) {
+    // Limpiar y normalizar
+    password.trim();
+    password.toUpperCase();
+    networkName.toUpperCase();
+    
+    // Verificar longitud
+    if (password.length() < 8) {
+        errorMsg = "Password muy corta. Mínimo 8 caracteres.";
+        return "";
+    }
+    if (password.length() > 32) {
+        errorMsg = "Password muy larga. Máximo 32 caracteres.";
+        return "";
+    }
+    
+    // Verificar caracteres válidos (solo alfanuméricos por ahora)
+    for (int i = 0; i < password.length(); i++) {
+        char c = password.charAt(i);
+        if (!isAlphaNumeric(c)) {
+            errorMsg = "Solo se permiten letras y números en la password.";
+            return "";
+        }
+    }
+    
+    // Verificar criterios de seguridad
+    if (!hasNumberAndLetter(password)) {
+        errorMsg = "Password debe tener al menos una letra y un número.";
+        return "";
+    }
+    
+    // No puede ser igual al nombre de la network
+    if (password.equals(networkName)) {
+        errorMsg = "Password no puede ser igual al nombre de la network.";
+        return "";
+    }
+    
+    // Verificar que no sea una password débil
+    if (!isPasswordSecure(password)) {
+        errorMsg = "Password demasiado simple. Evite secuencias obvias.";
+        return "";
+    }
+    
+    // Todo válido
+    errorMsg = "";
+    return password;
+}
+
+// Verificar si se puede eliminar una network específica
+bool ConfigManager::canDeleteNetwork(String name, String& errorMsg) {
+    name.trim();
+    name.toUpperCase();
+    
+    // Verificar que la network existe
+    int networkIndex = findNetworkByName(name);
+    if (networkIndex < 0) {
+        errorMsg = "Network '" + name + "' no existe.";
+        return false;
+    }
+    
+    // No se puede eliminar si es la única network
+    if (networkCount <= 1) {
+        errorMsg = "No se puede eliminar la única network. Cree otra primero.";
+        return false;
+    }
+    
+    // Todo válido para eliminar
+    errorMsg = "";
+    return true;
+}
+
+// Calcular memoria EEPROM usada por networks (aproximación)
+uint16_t ConfigManager::getEEPROMUsageBytes() {
+    uint16_t totalBytes = 0;
+    
+    // Bytes fijos por network metadata
+    totalBytes += sizeof(networkCount);      // Contador de networks
+    totalBytes += sizeof(activeNetworkIndex); // Índice activo
+    
+    // Bytes por cada network guardada
+    for (int i = 0; i < networkCount; i++) {
+        // Cada network usa: name + password + hash
+        totalBytes += networks[i].name.length() + 1;     // +1 por null terminator
+        totalBytes += networks[i].password.length() + 1; // +1 por null terminator  
+        totalBytes += sizeof(uint32_t);                  // hash
+    }
+    
+    // Overhead estimado de las keys EEPROM (aproximación)
+    totalBytes += networkCount * 30; // ~30 bytes promedio por set de keys
+    
+    return totalBytes;
+}
+
+// Calcular memoria EEPROM disponible (estimación conservadora)
+uint16_t ConfigManager::getAvailableEEPROMBytes() {
+    // ESP32 Preferences tiene ~4KB disponibles típicamente
+    // Reservamos espacio para la configuración general del dispositivo
+    const uint16_t TOTAL_EEPROM_SIZE = 4096;
+    const uint16_t RESERVED_FOR_CONFIG = 512;  // Para config general del dispositivo
+    const uint16_t SAFETY_MARGIN = 256;       // Margen de seguridad
+    
+    uint16_t usedBytes = getEEPROMUsageBytes();
+    uint16_t availableForNetworks = TOTAL_EEPROM_SIZE - RESERVED_FOR_CONFIG - SAFETY_MARGIN;
+    
+    if (usedBytes >= availableForNetworks) {
+        return 0;  // No hay espacio disponible
+    }
+    
+    return availableForNetworks - usedBytes;
+}
+
+void ConfigManager::handleNetworkStatus() {
+    Serial.println("========================================");
+    Serial.println("      ESTADO SISTEMA NETWORKS");
+    Serial.println("========================================");
+    
+    // Estadísticas básicas
+    Serial.println("Networks guardadas: " + String(networkCount) + "/" + String(MAX_NETWORKS));
+    
+    if (networkCount == 0) {
+        Serial.println("Estado:           SIN NETWORKS");
+        Serial.println("[INFO] Use 'NETWORK_CREATE <nombre>' para crear la primera network.");
+        Serial.println("========================================");
+        return;
+    }
+    
+    // Network activa
+    if (hasActiveNetwork()) {
+        SimpleNetwork* active = getActiveNetwork();
+        Serial.println("Network activa:   " + active->name);
+        Serial.println("Hash activo:      " + String(active->hash, HEX));
+    } else {
+        Serial.println("Network activa:   NINGUNA");
+        Serial.println("[WARNING] No hay network activa!");
+    }
+    
+    // Análisis de seguridad
+    int secureNetworks = 0;
+    int weakPasswords = 0;
+    
+    for (int i = 0; i < networkCount; i++) {
+        if (isPasswordSecure(networks[i].password)) {
+            secureNetworks++;
+        } else {
+            weakPasswords++;
+        }
+    }
+    
+    Serial.println("Networks seguras: " + String(secureNetworks) + "/" + String(networkCount));
+    if (weakPasswords > 0) {
+        Serial.println("Passwords débiles: " + String(weakPasswords) + " [WARNING]");
+    }
+    
+    // Uso de memoria EEPROM
+    uint16_t usedBytes = getEEPROMUsageBytes();
+    uint16_t availableBytes = getAvailableEEPROMBytes();
+    uint16_t totalNetworkSpace = usedBytes + availableBytes;
+    
+    Serial.println("----------------------------------------");
+    Serial.println("Memoria EEPROM (networks):");
+    Serial.println("  Usada:        " + String(usedBytes) + " bytes");
+    Serial.println("  Disponible:   " + String(availableBytes) + " bytes");
+    Serial.println("  Total:        " + String(totalNetworkSpace) + " bytes");
+    
+    // Calcular porcentaje usado
+    float percentUsed = (float)usedBytes / (float)totalNetworkSpace * 100.0;
+    Serial.println("  Uso:          " + String(percentUsed, 1) + "%");
+    
+    // Advertencias de memoria
+    if (percentUsed > 80.0) {
+        Serial.println("  [WARNING] Memoria casi llena!");
+    } else if (percentUsed > 90.0) {
+        Serial.println("  [CRITICAL] Memoria crítica!");
+    }
+    
+    // Capacidad estimada
+    int estimatedCapacity = availableBytes / 40; // ~40 bytes promedio por network
+    Serial.println("  Capacidad est: +" + String(estimatedCapacity) + " networks más");
+    
+    Serial.println("========================================");
+    Serial.println("Sistema:          " + String(config.configValid ? "CONFIGURADO" : "SIN CONFIGURAR"));
+    Serial.println("Dispositivo ID:   " + String(config.deviceID));
+    Serial.println("Rol:              " + String(config.role == ROLE_TRACKER ? "TRACKER" : 
+                                                config.role == ROLE_REPEATER ? "REPEATER" : 
+                                                config.role == ROLE_RECEIVER ? "RECEIVER" : "NONE"));
+    Serial.println("========================================");
+}
+
+// ========================================================
+
+/*
  * MÉTODOS UTILITARIOS PRIVADOS
  */
+
 void ConfigManager::printConfig() {
     Serial.println("\n=== CONFIGURACIÓN ACTUAL ===");
     Serial.println("Rol: " + getRoleString(config.role));
@@ -400,13 +814,16 @@ void ConfigManager::printConfig() {
     Serial.println("Máximo saltos: " + String(config.maxHops));
     Serial.println("Modo de datos: " + getDataModeString(config.dataMode));
     Serial.println("Región LoRa: " + getRegionString(config.region) + " (" + String(getFrequencyMHz()) + " MHz)");
+    
+    // NUEVO: Mostrar Radio Profile
     Serial.println("Perfil LoRa: " + getRadioProfileName());
+    
     Serial.println("============================");
 }
 
 void ConfigManager::printWelcome() {
     Serial.println("\n==================================================");
-    Serial.println("    CUSTODIA v" + String(config.version));
+    Serial.println("    CUSTOM MESHTASTIC GPS TRACKER v" + String(config.version));
     Serial.println("    ESP32-S3 + LoRa SX1262");
     Serial.println("==================================================");
 }
@@ -423,6 +840,8 @@ void ConfigManager::setDefaultConfig() {
     config.dataMode = DATA_MODE_ADMIN;
     config.region = REGION_US;
     config.configValid = false;
+    
+    // NUEVO: Radio Profile por defecto
     config.radioProfile = PROFILE_MESH_MAX_NODES;
     
     strncpy(config.version, FIRMWARE_VERSION, sizeof(config.version) - 1);

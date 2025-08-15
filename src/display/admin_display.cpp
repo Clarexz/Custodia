@@ -26,94 +26,110 @@ AdminDisplay::~AdminDisplay() {
 }
 
 /*
- * REEMPLAZAR las 3 funciones show*Output() en admin_display.cpp
- * 
- * Versión SIN referencias externas que no compilan
- */
-
-/*
- * TRACKER - Simplificado
+ * MOSTRAR OUTPUT ADMIN DEL TRACKER
  */
 void AdminDisplay::showTrackerOutput(uint16_t deviceID, bool sent) {
-    // Obtener datos necesarios
+    // Mostrar información completa como antes
+    DeviceConfig config = configManager.getConfig();
     GPSData gpsData = gpsManager.getCurrentData();
     LoRaStats stats = loraManager.getStats();
     
-    String activeChannel = configManager.getActiveChannelName();
+    Serial.println("\n[TRACKER] === TRANSMISIÓN GPS + LoRa MESH ===");
+    Serial.println("Device ID: " + String(deviceID));
+    Serial.println("Role: TRACKER (CLIENT priority)");
+    Serial.println("Coordenadas: " + gpsManager.formatCoordinates());
+    Serial.println("Battery: " + String(batteryManager.getVoltage()) + " mV");
+    Serial.println("Timestamp: " + String(gpsData.timestamp));
+    Serial.println("Packet: " + gpsManager.formatPacketWithDeviceID(deviceID));
+    Serial.println("LoRa Status: " + String(sent ? "ENVIADO" : "FALLIDO"));
+    Serial.println("Estado LoRa: " + loraManager.getStatusString());
+    if (configManager.hasActiveNetwork()) {
+        SimpleNetwork* network = configManager.getActiveNetwork();
+        Serial.println("Network: " + network->name + " (Hash: " + String(network->hash, HEX) + ")");
+    } else {
+        Serial.println("Network: NINGUNA ACTIVA");
+    }
     
-    // STATUS LINE compacta
-    Serial.println("[TRACKER] GPS Sent | ID:" + String(deviceID) + 
-                  " | Coord:" + String(gpsData.latitude, 6) + "," + String(gpsData.longitude, 6) +
-                  " | Bat:" + String(batteryManager.getVoltage()) + "mV" +
-                  " | TX:" + String(stats.packetsSent) +
-                  " | Channel:" + activeChannel +
-                  " | Status:" + String(sent ? "OK" : "FAIL"));
+    if (sent) {
+        Serial.println("RSSI último: " + String(loraManager.getLastRSSI()) + " dBm");
+        Serial.println("SNR último: " + String(loraManager.getLastSNR()) + " dB");
+        Serial.println("Packets enviados: " + String(stats.packetsSent));
+        Serial.println("Duplicados ignorados: " + String(stats.duplicatesIgnored));
+        Serial.println("Retransmisiones: " + String(stats.rebroadcasts));
+    } else {
+        Serial.println("ERROR: Fallo en transmisión LoRa");
+    }
+    Serial.println("Network filtrados: " + String(stats.networkFilteredPackets));
+    
+    Serial.println("Próxima transmisión en " + String(config.gpsInterval) + " segundos");
+    Serial.println("==========================================\n");
 }
 
 /*
- * REPEATER - Simplificado  
+ * MOSTRAR OUTPUT ADMIN DEL REPEATER
  */
 void AdminDisplay::showRepeaterOutput() {
-    // Obtener estadísticas
+    // Mostrar información completa del repeater
     LoRaStats stats = loraManager.getStats();
     
-    // Variables estáticas para control de output
-    static uint32_t lastUpdateTime = 0;
-    static uint32_t lastRetxCount = 0;
-    uint32_t currentTime = millis();
-    
-    // Mostrar solo cuando hay nueva actividad O cada 10 segundos
-    bool hasNewActivity = (stats.rebroadcasts > lastRetxCount);
-    bool timeForUpdate = (currentTime - lastUpdateTime > 10000);
-    
-    if (hasNewActivity || timeForUpdate) {
-        String activeChannel = configManager.getActiveChannelName();
-        
-        // STATUS LINE compacta
-        Serial.println("[REPEATER] Mesh Router | RX:" + String(stats.packetsReceived) + 
-                      " | TX:" + String(stats.packetsSent) +
-                      " | Retx:" + String(stats.rebroadcasts) +
-                      " | Dupl:" + String(stats.duplicatesIgnored) +
-                      " | Drops:" + String(stats.hopLimitReached) +
-                      " | Channel:" + activeChannel);
-        
-        lastUpdateTime = currentTime;
-        lastRetxCount = stats.rebroadcasts;
+    Serial.println("\n[REPEATER] === ESTADO DEL REPETIDOR ===");
+    Serial.println("Escuchando red mesh - Listo para retransmitir");
+    Serial.println("Role: REPEATER (ROUTER priority)");
+    Serial.println("Estado LoRa: " + loraManager.getStatusString());
+    Serial.println("RX: " + String(stats.packetsReceived) + 
+                   " | TX: " + String(stats.packetsSent) + 
+                   " | Retransmisiones: " + String(stats.rebroadcasts));
+    Serial.println("Duplicados ignorados: " + String(stats.duplicatesIgnored));
+    Serial.println("Hop limit alcanzado: " + String(stats.hopLimitReached));
+    Serial.println("===================================\n");
+    if (configManager.hasActiveNetwork()) {
+        SimpleNetwork* network = configManager.getActiveNetwork();
+        Serial.println("Network: " + network->name + " (Hash: " + String(network->hash, HEX) + ")");
+    } else {
+        Serial.println("Network: NINGUNA ACTIVA");
     }
+    Serial.println("Network filtrados: " + String(stats.networkFilteredPackets));
 }
 
 /*
- * RECEIVER - Simplificado
+ * MOSTRAR OUTPUT ADMIN DEL RECEIVER
  */
 void AdminDisplay::showReceiverOutput() {
-    // Obtener estadísticas actuales
+    // Mostrar información completa del receiver
     LoRaStats stats = loraManager.getStats();
+    GPSData gpsData = gpsManager.getCurrentData();
     
-    // Variables estáticas para detectar cambios
-    static uint32_t lastPacketCount = 0;
-    static uint32_t lastUpdateTime = 0;
-    uint32_t currentTime = millis();
-    
-    // Mostrar status compacto cada 5 segundos O cuando hay nuevos packets
-    bool hasNewPackets = (stats.packetsReceived > lastPacketCount);
-    bool timeForUpdate = (currentTime - lastUpdateTime > 5000);
-    
-    if (hasNewPackets || timeForUpdate) {
-        String activeChannel = configManager.getActiveChannelName();
-        
-        // STATUS LINE - 1 línea compacta con toda la info esencial
-        Serial.println("[RECEIVER] Mesh Monitor | RX:" + String(stats.packetsReceived) + 
-                      " | Retx:" + String(stats.rebroadcasts) + 
-                      " | Dupl:" + String(stats.duplicatesIgnored) + 
-                      " | Signal:" + String(stats.lastRSSI) + "dBm/" + String(stats.lastSNR) + "dB" +
-                      " | Channel:" + activeChannel);
-        
-        lastUpdateTime = currentTime;
+    Serial.println("\n[RECEIVER] === ESTADO DEL RECEPTOR MESH ===");
+    Serial.println("Escuchando posiciones GPS de la red...");
+    Serial.println("Role: RECEIVER (CLIENT priority)");
+    Serial.println("Estado LoRa: " + loraManager.getStatusString());
+    if (configManager.hasActiveNetwork()) {
+        SimpleNetwork* network = configManager.getActiveNetwork();
+        Serial.println("Network: " + network->name + " (Hash: " + String(network->hash, HEX) + ")");
+    } else {
+        Serial.println("Network: NINGUNA ACTIVA - Modo legacy");
     }
     
-    // Mostrar GPS data SOLO cuando hay nuevos packets
-    if (hasNewPackets) {
-        Serial.println("[GPS] New data received | RSSI:" + String(stats.lastRSSI) + "dBm SNR:" + String(stats.lastSNR) + "dB");
+    // Mostrar nuestra propia posición como referencia
+    if (gpsData.hasValidFix) {
+        Serial.println("Posición propia: " + gpsManager.formatCoordinates());
+        Serial.println("Estado GPS: " + gpsManager.getStatusString());
+    }
+    
+    // Mostrar estadísticas de red
+    Serial.println("Packets recibidos: " + String(stats.packetsReceived));
+    Serial.println("Duplicados ignorados: " + String(stats.duplicatesIgnored));
+    Serial.println("Retransmisiones hechas: " + String(stats.rebroadcasts));
+    Serial.println("Network filtrados: " + String(stats.networkFilteredPackets));
+    
+    // Detectar nuevos packets recibidos
+    static uint32_t lastPacketCount = 0;
+    if (stats.packetsReceived > lastPacketCount) {
+        Serial.println("¡NUEVOS DATOS RECIBIDOS!");
+        Serial.println("Último RSSI: " + String(stats.lastRSSI) + " dBm");
+        Serial.println("Último SNR: " + String(stats.lastSNR) + " dB");
         lastPacketCount = stats.packetsReceived;
     }
+    
+    Serial.println("========================================\n");
 }

@@ -5,8 +5,6 @@
  */
 
 #include "../lora.h"
-#include "../network/network_security.h"
-#include "../network/crypto_engine.h"
 
 /*
  * ENVÍO DE DATOS GPS (sin cambios)
@@ -53,33 +51,14 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
     packet.messageType = msgType;
     packet.sourceID = deviceID;
     packet.destinationID = destinationID;
-    packet.hops = 0;
+    packet.hops = 0;  // Packet original
     packet.maxHops = MESHTASTIC_MAX_HOPS;  // Máximo saltos
     packet.packetID = ++packetCounter;
-    // NUEVO: Channel hash population
-    packet.channelHash = NetworkSecurity::getHash();
-    if (configManager.isAdminMode()) {
-        Serial.printf("[LoRa] Using channel hash: 0x%08X\n", packet.channelHash);
-    }
     packet.payloadLength = payloadLength;
+    packet.networkHash = configManager.getActiveNetworkHash();
     
     // Copiar payload
     memcpy(packet.payload, payload, payloadLength);
-
-    // NUEVO: Encryption integration
-    if (NetworkSecurity::isCryptoEnabled()) {
-        NetworkSecurity::setCryptoForActiveChannel();
-        
-        if (crypto && crypto->getKeySize() > 0) {
-            crypto->encrypt(packet.sourceID, packet.packetID, 
-                        packet.payloadLength, packet.payload);
-            
-            if (configManager.isAdminMode()) {
-                Serial.printf("[LoRa] Payload encrypted (%d bytes) for channel '%s'\n",
-                            packet.payloadLength, NetworkSecurity::getActiveChannelName());
-            }
-        }
-    }
     
     // Calcular checksum
     packet.checksum = calculateChecksum(&packet);
@@ -102,10 +81,10 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
         stats.packetsSent++;
         
         // SOLO mostrar debug en modo ADMIN
-        /*if (configManager.isAdminMode()) {
+        if (configManager.isAdminMode()) {
             Serial.println("[LoRa] Packet enviado exitosamente");
             Serial.println("[LoRa] PacketID: " + String(packet.packetID) + ", Air time: " + String(airTime) + " ms");
-        }*/
+        }
         
         // Volver a modo recepción
         radio.startReceive();
@@ -125,6 +104,16 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
         status = LORA_STATUS_READY;
         return false;
     }
+}
+
+bool LoRaManager::isPacketFromSameNetwork(const LoRaPacket* packet) {
+    // Si no hay network activa, aceptar todos los packets (modo legacy)
+    if (!configManager.hasActiveNetwork()) {
+        return true;
+    }
+    
+    // Comparar hash del packet con hash de la network activa
+    return (packet->networkHash == configManager.getActiveNetworkHash());
 }
 
 /*
@@ -150,6 +139,19 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
             }
             return false;
         }
+
+        if (!isPacketFromSameNetwork(packet)) {
+            // Incrementar estadística de filtrado
+            stats.networkFilteredPackets++;
+            
+            // Log opcional para debugging en modo ADMIN
+            if (configManager.isAdminMode()) {
+                Serial.printf("[NETWORK] Packet filtrado - Hash recibido: %08X vs activo: %08X\n", 
+                             packet->networkHash, configManager.getActiveNetworkHash());
+            }
+            
+            return false; // Rechazar packet de network diferente
+        }
         
         // Verificar duplicados
         if (shouldFilterReceived(packet)) {
@@ -160,64 +162,18 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
             }
             return false;  // Packet duplicado, ignorar
         }
-
-        // ===== FASE 4: CHANNEL FILTERING =====
-        // Verificar si el packet pertenece al canal activo
-        if (!NetworkSecurity::isValidForActiveChannel(packet->channelHash)) {
-            stats.channelMismatches++;
-            stats.packetsIgnored++;
-            
-            // SOLO mostrar en modo ADMIN
-            if (configManager.isAdminMode()) {
-                Serial.printf("[SECURITY] Ignoring packet from different channel (hash=0x%08X)\n", 
-                             packet->channelHash);
-            }
-            
-            return false;  // Ignorar packet de otro canal
-        }
-        
-        // ===== FASE 4: PACKET DECRYPTION =====
-        // Detectar si el packet está encriptado (para estadísticas)
-        bool wasEncrypted = NetworkSecurity::isPacketEncrypted(packet);
-        if (wasEncrypted) {
-            stats.encryptedPacketsReceived++;
-        } else {
-            stats.unencryptedPacketsReceived++;
-        }
-        
-        // Intentar decriptar si es necesario
-        if (!NetworkSecurity::attemptDecrypt(packet)) {
-            stats.decryptionFailures++;
-            
-            // SOLO mostrar en modo ADMIN
-            if (configManager.isAdminMode()) {
-                Serial.printf("[SECURITY] Failed to decrypt packet from source=%u, ID=%u\n", 
-                             packet->sourceID, packet->packetID);
-            }
-            
-            return false;  // Falló decriptación = ignorar packet
-        }
-        
-        // ===== PACKET SUCCESSFULLY PROCESSED =====
-        stats.validPacketsProcessed++;
-        
-        // SOLO mostrar debug en modo ADMIN
-        if (configManager.isAdminMode()) {
-            Serial.printf("[SECURITY] Packet validated: channel hash=0x%08X, encrypted=%s\n", 
-                         packet->channelHash, wasEncrypted ? "YES" : "NO");
-        }
         
         // Packet válido y nuevo
         stats.packetsReceived++;
         
         // SOLO mostrar debug en modo ADMIN
-        /*if (configManager.isAdminMode()) {
+        if (configManager.isAdminMode()) {
             Serial.println("[LoRa] Packet válido recibido");
             Serial.println("[LoRa] RSSI: " + String(stats.lastRSSI) + " dBm");
             Serial.println("[LoRa] SNR: " + String(stats.lastSNR) + " dB");
             Serial.println("[LoRa] Source: " + String(packet->sourceID) + ", Hops: " + String(packet->hops) + "/" + String(packet->maxHops));
             Serial.println("[LoRa] Message Type: " + String(packet->messageType));
-        }*/
+        }
         
         // Agregar a seen packets para evitar futuras retransmisiones
         addToRecentPackets(packet->sourceID, packet->packetID);
@@ -297,13 +253,13 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
         }
 
         // DEBUG: Verificar por qué no se retransmite
-        /*if (configManager.isAdminMode())
+        if (configManager.isAdminMode())
         {
             Serial.println("[DEBUG] Message type: " + String(packet->messageType));
             Serial.println("[DEBUG] Should retransmit: " + String(shouldRetransmit));
-        }*/
+        }
 
-        /*if (shouldRetransmit)
+        if (shouldRetransmit)
         {
             if (configManager.isAdminMode())
             {
@@ -327,7 +283,7 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
             {
                 Serial.println("[DEBUG] Message type no válido para retransmisión");
             }
-        }*/
+        }
 
         return true;
         
