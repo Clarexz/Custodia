@@ -2,6 +2,7 @@ import sys
 import time
 import subprocess
 import importlib.util
+import argparse
 
 def check_and_install_pyserial():
     """Install pyserial if not available"""
@@ -451,8 +452,6 @@ def main():
 
     
     print(f"Usando puerto para configuracion: {port}")
-    
-    print(f"[DEBUG] PSK proporcionado: '{args.psk}'")
     # Build configuration command - try both variants
     config_cmd_q = f"Q_CONFIG {args.role},{args.id},{args.interval},{args.region},{args.mode},{args.radio},{args.hops}"
     config_cmd_alt = f"CONFIG {args.role},{args.id},{args.interval},{args.region},{args.mode},{args.radio},{args.hops}"
