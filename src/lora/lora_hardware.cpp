@@ -15,7 +15,7 @@ LoRaManager loraManager;
  * 
  * Inicializa el objeto SX1262 con los pines correctos para XIAO ESP32S3
  */
-LoRaManager::LoRaManager() : radio(new Module(LORA_NSS_PIN, LORA_DIO1_PIN, LORA_NRST_PIN, LORA_BUSY_PIN)) {
+LoRaManager::LoRaManager() : radio(new Module((uint32_t)LORA_NSS_PIN, (uint32_t)LORA_DIO1_PIN, (uint32_t)LORA_NRST_PIN, (uint32_t)LORA_BUSY_PIN)) {
     // Inicializar estado existente
     status = LORA_STATUS_INIT;
     deviceID = 0;
