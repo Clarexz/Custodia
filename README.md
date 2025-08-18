@@ -63,12 +63,12 @@ Complete off-grid GPS tracking system based on Meshtastic algorithm with simplif
 
 **Windows:**
 ```bash
-python flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST -channel TEAM_ALPHA
+python flash_tool.py -role TRACKER -id 1 -interval 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST -channel TEAM_ALPHA
 ```
 
 **Mac/Linux:**
 ```bash
-python3 flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST -channel TEAM_ALPHA
+python3 flash_tool.py -role TRACKER -id 1 -interval 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST -channel TEAM_ALPHA
 ```
 
 **The tool automatically:**
@@ -78,6 +78,7 @@ python3 flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE -radio
 4. Configures all device parameters
 5. Creates and activates encrypted network
 6. Starts operational mode
+7. **Launches integrated serial monitor** for real-time diagnostics
 
 ### Deployment Parameters
 
@@ -85,19 +86,16 @@ python3 flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode SIMPLE -radio
 |-----------|-------------|--------------|---------|
 | `-role` | Device function | TRACKER, REPEATER, RECEIVER | `TRACKER` |
 | `-id` | Unique device ID | 1-999 | `1` |
-| `-gps` | GPS transmission interval | 5-3600 seconds | `15` |
+| `-interval` | GPS transmission interval | 5-3600 seconds | `15` |
 | `-region` | LoRa frequency region | US, EU, CH, AS, JP | `US` |
 | `-mode` | Display verbosity | SIMPLE, ADMIN | `SIMPLE` |
 | `-radio` | Radio optimization profile | See Radio Profiles section | `DESERT_LONG_FAST` |
+| `-hops` | Maximum mesh hops | 1-10 | `3` |
 | `-channel` | Private network name | 3-20 alphanumeric chars | `TEAM_ALPHA` |
+| `-password` | Network password (optional) | 8-32 chars with number+letter | `SECURE123` |
+| `-port` | Serial port override | System-specific | `COM3` or `/dev/ttyUSB0` |
 
 ### Network Security Examples
-
-**Public network (no encryption):**
-```bash
-python3 flash_tool.py -role TRACKER -id 1 -gps 30 -region US -mode SIMPLE -radio URBAN_DENSE -channel PUBLIC
-```
-
 **Private encrypted network:**
 ```bash
 python3 flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode ADMIN -radio MESH_MAX_NODES -channel SECURE_OPS
@@ -105,12 +103,51 @@ python3 flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode ADMIN -radio 
 
 **Multiple isolated networks:**
 ```bash
-# Network A devices in north_team channel
-python3 flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode ADMIN -radio MESH_MAX_NODES -channel NORTH_TEAM
+# Network A devices
+python3 flash_tool.py -role TRACKER -id 1 -channel NORTH_TEAM -region US -mode SIMPLE -radio DESERT_LONG_FAST
 
-# Network B devices (completely isolated because they are in a completely different channel)
-python3 flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode ADMIN -radio MESH_MAX_NODES -channel SOUTH_TEAM
+# Network B devices (completely isolated)
+python3 flash_tool.py -role TRACKER -id 2 -channel SOUTH_TEAM -region US -mode SIMPLE -radio DESERT_LONG_FAST
 ```
+
+## Advanced Features
+
+### Integrated Serial Monitor
+
+The flash tool includes an **integrated serial monitor** that automatically launches after successful deployment:
+
+**Features:**
+- **Cross-platform compatibility** - Works on Windows, Mac, and Linux
+- **Automatic launch** - Opens in separate terminal window after flashing
+- **Real-time diagnostics** - Shows device status, GPS data, and network activity
+- **Graceful exit** - Clean termination with Ctrl+C
+
+**Manual monitor access:**
+```bash
+# If integrated monitor fails to launch automatically
+pio device monitor --baud 115200 --port [detected_port]
+```
+
+### Password Management
+
+**Auto-generated passwords:**
+- **8-character alphanumeric** strings automatically generated
+- **Security validation** - Ensures at least 1 number and 1 letter
+- **Uppercase conversion** - All passwords converted to uppercase
+- **Copy protection** - Tool offers to display password for manual copying
+
+**Custom password validation:**
+- **Length**: 8-32 characters required
+- **Content**: Must contain at least 1 number AND 1 letter
+- **Security**: Cannot be identical to channel name
+- **Reserved words**: Common passwords like "PASSWORD123" are rejected
+
+### Enhanced Port Detection
+
+**Automatic detection:**
+- **Multi-platform support** - Detects ESP32-S3 on Windows (COM ports), Mac/Linux (tty ports)
+- **Hardware identification** - Recognizes ESP32-S3 by USB descriptors
+- **Intelligent fallback** - Manual port specification if auto-detection fails
 
 ---
 
@@ -190,6 +227,20 @@ The system includes five pre-configured radio profiles optimized for different d
 | **MESH_MAX_NODES** | 9 | 250kHz | 17dBm | ~2.5km | ~320ms | Large networks (20-30 nodes) |
 | **CUSTOM_ADVANCED** | Variable | Variable | Variable | Variable | Variable | Manual configuration |
 
+### Profile Configuration Examples
+
+**Deployment with specific profile:**
+```bash
+# Maximum range for rural deployment
+python3 flash_tool.py -role TRACKER -id 1 -radio DESERT_LONG_FAST -channel RURAL_NET
+
+# Urban high-density network
+python3 flash_tool.py -role REPEATER -id 2 -radio URBAN_DENSE -channel CITY_MESH
+
+# Large network optimization
+python3 flash_tool.py -role RECEIVER -id 3 -radio MESH_MAX_NODES -channel CONTROL_NET
+```
+
 **Manual profile customization (via serial interface):**
 ```bash
 CONFIG_RADIO_PROFILE CUSTOM_ADVANCED
@@ -259,13 +310,15 @@ NETWORK_CREATE TEAM_BETA SECRET123
 | **AS** | `AS` | 433 MHz | Asia (general) |
 | **JP** | `JP` | 920 MHz | Japan |
 
+**Regional configuration is automatic** based on deployment parameter.
+
 ---
 
 ## Data Visualization
 
 ### SIMPLE Mode (Clean Output)
 
-**Purpose**: Minimal display showing only essential data to save energy resources
+**Purpose**: Minimal display showing only essential packet data
 
 **Output format:**
 ```
@@ -368,9 +421,9 @@ Next transmission in 15 seconds
 
 ## Troubleshooting
 
-### Deployment Issues
+### Flash Tool Issues
 
-**Flash tool cannot detect ESP32-S3:**
+**ESP32-S3 not detected:**
 ```bash
 # Solutions:
 1. Verify USB-C connection integrity
@@ -378,15 +431,36 @@ Next transmission in 15 seconds
 3. Use manual BOOT+RESET sequence
 4. Install/update USB drivers
 5. Try different USB port or cable
+6. Use -port parameter for manual override
 ```
 
-**Python dependencies missing:**
+**Integrated monitor fails to launch:**
 ```bash
-# Automatic resolution:
-# Flash tool automatically installs pyserial and detects PlatformIO
-# If manual intervention needed:
-pip install pyserial
-# Install PlatformIO Core manually if auto-detection fails
+# Fallback manual monitor:
+pio device monitor --baud 115200
+
+# Platform-specific solutions:
+# Windows: Ensure cmd.exe available in PATH
+# Mac: Verify Terminal.app permissions
+# Linux: Install gnome-terminal, xterm, or konsole
+```
+
+**Password validation errors:**
+```bash
+# Common issues and solutions:
+1. "Password insecure" - Ensure at least 1 number AND 1 letter
+2. "Password too short" - Minimum 8 characters required
+3. "Password cannot be same as channel" - Use different password
+4. "Reserved name" - Avoid CONFIG, ADMIN, DEBUG, SYSTEM, etc.
+```
+
+**Configuration persistence issues:**
+```bash
+# Verification steps:
+1. Confirm CONFIG_SAVE was successful
+2. Check NETWORK_LIST shows created network
+3. Verify device restarts with same network active
+4. Use STATUS command to check configuration
 ```
 
 ### Network Communication Issues
