@@ -2,6 +2,8 @@ import sys
 import subprocess
 import time
 import argparse
+import platform
+from pathlib import Path
 
 def check_and_install_pyserial():
     """Install pyserial if not available"""
@@ -143,75 +145,182 @@ def detect_board_type(port):
         print(f"Warning: Board detection failed ({e}), using XIAO ESP32S3")
         return 'seeed_xiao_esp32s3'
 
-def check_and_install_platformio():
-    """Check for PlatformIO and install if not found"""
-    print("Checking PlatformIO installation...")
+def install_dependencies():
+    """Install all required dependencies automatically"""
+    import subprocess
+    import sys
     
-    # First check if already installed
-    pio_cmd = find_platformio()
-    if pio_cmd:
-        print(f"PlatformIO found: {pio_cmd}")
-        return pio_cmd
+    print("Checking and installing dependencies...")
     
-    # Not found, try to install
-    print("PlatformIO not found. Installing automatically...")
-    try:
-        subprocess.run([sys.executable, '-m', 'pip', 'install', 'platformio'], 
-                      check=True, capture_output=True)
-        print("PlatformIO installed successfully")
-        
-        # Check again after installation
-        time.sleep(2)  # Give it a moment
-        pio_cmd = find_platformio()
-        if pio_cmd:
-            print(f"PlatformIO ready: {pio_cmd}")
-            return pio_cmd
-        else:
-            print("Installation completed but PlatformIO not found in PATH")
-            print("Trying common post-install locations...")
-            # Try to find in fresh install locations
-            import os
-            possible_new_paths = [
-                os.path.expanduser('~/.local/bin/pio'),
-                '/usr/local/bin/pio'
-            ]
-            for path in possible_new_paths:
-                if os.path.exists(path):
-                    print(f"Found PlatformIO at: {path}")
-                    return path
-            
-            print("Manual setup may be required")
-            return None
-            
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to install PlatformIO: {e}")
-        return None
-    except Exception as e:
-        print(f"Error during installation: {e}")
-        return None
+    # List of required packages
+    required_packages = ['pyserial', 'platformio']
+    
+    for package in required_packages:
+        try:
+            print(f"Checking {package}...")
+            if package == 'pyserial':
+                import serial
+                print(f"✓ {package} already installed")
+            elif package == 'platformio':
+                # Check if pio command works
+                result = subprocess.run(['pio', '--version'], 
+                                      capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    print(f"✓ {package} already installed")
+                else:
+                    raise ImportError()
+        except (ImportError, subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
+            print(f"Installing {package}...")
+            try:
+                subprocess.run([sys.executable, '-m', 'pip', 'install', package], 
+                             check=True, capture_output=True, text=True)
+                print(f"✓ {package} installed successfully")
+                
+                # For PlatformIO on Windows, we need to refresh PATH
+                if package == 'platformio' and sys.platform.startswith('win'):
+                    print("Refreshing PATH for Windows...")
+                    import time
+                    time.sleep(3)  # Give Windows time to update
+                
+            except subprocess.CalledProcessError as e:
+                print(f"✗ Failed to install {package}")
+                print(f"Error: {e.stderr}")
+                return False
+    
+    return True
 
 def find_platformio():
-    """Find PlatformIO installation"""
+    """Find PlatformIO installation with robust cross-platform detection"""
     import shutil
+    import platform
+    import sys
+    import subprocess
     from pathlib import Path
     
-    # Check if pio is in PATH
-    if shutil.which('pio'):
-        return 'pio'
+    # Method 1: Check if pio is in PATH (most reliable)
+    pio_cmd = shutil.which('pio')
+    if pio_cmd:
+        # Validate that it actually works
+        try:
+            result = subprocess.run([pio_cmd, '--version'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                return pio_cmd
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
     
-    # Check common user installation paths
-    possible_paths = [
-        Path.home() / '.platformio' / 'penv' / 'bin' / 'pio',
-        Path.home() / '.platformio' / 'penv' / 'Scripts' / 'pio.exe',  # Windows
-        Path.home() / '.local' / 'bin' / 'pio',
-        '/usr/local/bin/pio',
-    ]
+    # Method 2: Check common installation paths
+    possible_paths = []
     
+    if platform.system() == "Windows":
+        # Windows-specific paths
+        python_base = Path(sys.executable).parent
+        possible_paths.extend([
+            python_base / 'Scripts' / 'pio.exe',
+            Path.home() / 'AppData' / 'Local' / 'Programs' / 'Python' / 'Scripts' / 'pio.exe',
+            Path.home() / '.platformio' / 'penv' / 'Scripts' / 'pio.exe',
+            Path('C:/Python39/Scripts/pio.exe'),
+            Path('C:/Python310/Scripts/pio.exe'),
+            Path('C:/Python311/Scripts/pio.exe'),
+            Path('C:/Python312/Scripts/pio.exe'),
+        ])
+    else:
+        # macOS/Linux paths
+        possible_paths.extend([
+            Path.home() / '.local' / 'bin' / 'pio',
+            Path.home() / '.platformio' / 'penv' / 'bin' / 'pio',
+            Path('/usr/local/bin/pio'),  # FIX: Now properly wrapped in Path()
+        ])
+    
+    # Test each possible path
     for pio_path in possible_paths:
-        if pio_path.exists():
-            return str(pio_path)
+        try:
+            if pio_path.exists():
+                # Validate that it actually works
+                result = subprocess.run([str(pio_path), '--version'], 
+                                      capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    return str(pio_path)
+        except (OSError, PermissionError, subprocess.TimeoutExpired, FileNotFoundError):
+            continue
     
     return None
+
+def check_and_install_platformio():
+    """Check for PlatformIO and install if not found - ROBUST VERSION"""
+    import subprocess
+    import sys
+    import time
+    
+    print("Checking PlatformIO installation...")
+    
+    # First check if already working
+    pio_cmd = find_platformio()
+    if pio_cmd:
+        print(f"✓ PlatformIO found and working: {pio_cmd}")
+        return pio_cmd
+    
+    print("PlatformIO not found or not working. Installing automatically...")
+    
+    try:
+        # Install PlatformIO
+        result = subprocess.run([sys.executable, '-m', 'pip', 'install', 'platformio'], 
+                              check=True, capture_output=True, text=True)
+        print("✓ PlatformIO installation completed")
+        
+        # Give time for installation to settle
+        time.sleep(3)
+        
+        # Check if it's working now
+        pio_cmd = find_platformio()
+        if pio_cmd:
+            print(f"✓ PlatformIO ready: {pio_cmd}")
+            return pio_cmd
+        
+        # If still not found, try to help the user
+        print("⚠ Installation completed but PlatformIO not immediately available")
+        print("This is common on Windows. Trying alternative methods...")
+        
+        # On Windows, try refreshing PATH
+        if sys.platform.startswith('win'):
+            print("Refreshing environment variables...")
+            time.sleep(2)
+            pio_cmd = find_platformio()
+            if pio_cmd:
+                print(f"✓ PlatformIO now available: {pio_cmd}")
+                return pio_cmd
+        
+        # Last resort: provide clear instructions
+        print("Automatic setup incomplete. Manual steps required:")
+        print()
+        print("SOLUTION:")
+        print("1. Close this terminal/command prompt")
+        print("2. Open a NEW terminal/command prompt") 
+        print("3. Test with: pio --version")
+        print("4. If still not working:")
+        if sys.platform.startswith('win'):
+            print("   - Add Python Scripts folder to PATH")
+            print("   - Or reinstall Python with 'Add to PATH' checked")
+        else:
+            print("   - Try: export PATH=$PATH:~/.local/bin")
+            print("   - Or add ~/.local/bin to your shell profile")
+        print("5. Re-run the flash tool")
+        print()
+        return None
+            
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to install PlatformIO")
+        print(f"Error details: {e.stderr}")
+        print()
+        print("MANUAL INSTALLATION:")
+        print("1. pip install platformio")  
+        print("2. Or download from: https://platformio.org/")
+        print("3. Ensure PlatformIO is in your system PATH")
+        print("4. Test with: pio --version")
+        return None
+    except Exception as e:
+        print(f"Unexpected error during installation: {e}")
+        return None
 
 def validate_parameters(args):
     """Validate all parameters including new network parameters"""
@@ -337,6 +446,11 @@ def integrated_serial_monitor(port):
     print("---------------------------------------------")
 
 def main():
+    # Agregar al inicio
+    if not install_dependencies():
+        print("System setup failed")
+        sys.exit(1)
+            
     print("Custodia Flash Tool")
     print("===================")
     
