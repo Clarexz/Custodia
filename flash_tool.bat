@@ -142,8 +142,13 @@ powershell -ExecutionPolicy Bypass -File config_device.ps1 2>nul
 if %errorlevel% neq 0 (
     echo Advertencia: Error en configuración automática
     echo Configuración manual requerida:
-    echo   CONFIG_NETWORK %CHANNEL% %PASSWORD%
-    echo   CONFIG_BASIC %ROLE% %DEVICE_ID% %INTERVAL% %REGION% %MODE% %RADIO% %HOPS%
+    echo   CONFIG_ROLE %ROLE%
+    echo   CONFIG_DEVICE_ID %DEVICE_ID%
+    echo   CONFIG_GPS_INTERVAL %INTERVAL%
+    echo   CONFIG_REGION %REGION%
+    echo   CONFIG_DATA_MODE %MODE%
+    echo   CONFIG_RADIO_PROFILE %RADIO%
+    echo   CONFIG_MAX_HOPS %HOPS%
     echo   CONFIG_SAVE
     echo   START
 ) else (
