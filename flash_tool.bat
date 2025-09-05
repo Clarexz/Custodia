@@ -217,7 +217,7 @@ REM Configurar dispositivo via serial
 echo.
 echo [5/5] Configurando dispositivo...
 echo Esperando que el dispositivo reinicie...
-timeout /t 8 /nobreak >nul
+ping localhost -n 9 >nul
 
 REM Crear comandos de configuración
 set "NETWORK_CMD=CONFIG_NETWORK %CHANNEL% %PASSWORD%"
