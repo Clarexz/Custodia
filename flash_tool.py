@@ -591,83 +591,165 @@ def main():
         print("WARNING: No port detected after flash")
         print("Manual configuration required:")
         print(f"1. Connect to device manually")
-        print(f"2. Send: {network_cmd}")
-        print(f"3. Send: {config_cmd_q}")
+        print(f"2. Send: NETWORK_CREATE {args.channel.upper()} {args.password.upper()}")
+        print(f"3. Send: Q_CONFIG {args.role},{args.id},{args.interval},{args.region},{args.mode},{args.radio},{args.hops}")
         print("4. Send: CONFIG_SAVE")
         print("5. Send: START")
         sys.exit(1)
 
-    
     print(f"Using configuration port: {port}")
     
-    # Build configuration command - try both variants
+    # Build configuration commands
     config_cmd_q = f"Q_CONFIG {args.role},{args.id},{args.interval},{args.region},{args.mode},{args.radio},{args.hops}"
     config_cmd_alt = f"CONFIG {args.role},{args.id},{args.interval},{args.region},{args.mode},{args.radio},{args.hops}"
-    
     network_cmd = f"NETWORK_CREATE {args.channel.upper()} {args.password.upper()}"
     
-    # Send configuration
+    # Send configuration with proper timing and error handling
     try:
-        ser = serial.Serial(port, 115200, timeout=10)
-        time.sleep(3)  # Wait for device initialization
+        ser = serial.Serial(port, 115200, timeout=15)
+        time.sleep(5)  # Extended wait for device initialization
         
-        ser.write((network_cmd + '\r\n').encode())  # ← AGREGAR ESTA LÍNEA
-        time.sleep(2)  # Wait for network creation 
+        print("Clearing input buffer...")
+        ser.reset_input_buffer()  # Clear any startup messages
         
-        # Try Q_CONFIG first
-        print(f"Configuring device...")
-        ser.write((config_cmd_q + '\r\n').encode())
-        time.sleep(3)  # Wait for response
+        # Send a test command first to ensure device is responsive
+        print("Testing device communication...")
+        ser.write(b'\r\n')  # Wake up device
+        time.sleep(1)
+        ser.write(b'STATUS\r\n')
+        time.sleep(2)
         
-        # Read response
+        # Read and discard status response
         response = ""
         while ser.in_waiting > 0:
             response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
             time.sleep(0.1)
         
+        print("Device communication established")
+        
+        # Step 1: Create network FIRST
+        print(f"Creating network: {args.channel}")
+        ser.reset_input_buffer()
+        ser.write((network_cmd + '\r\n').encode())
+        time.sleep(4)  # Give more time for network creation
+        
+        # Check network creation response
+        network_response = ""
+        while ser.in_waiting > 0:
+            network_response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+            time.sleep(0.1)
+        
+        print(f"Network creation response: {network_response[:200]}...")  # Debug info
+        
+        # Step 2: Configure device parameters
+        print(f"Configuring device parameters...")
+        ser.reset_input_buffer()
+        ser.write((config_cmd_q + '\r\n').encode())
+        time.sleep(4)  # Wait for response
+        
+        # Read configuration response
+        config_response = ""
+        while ser.in_waiting > 0:
+            config_response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+            time.sleep(0.1)
+        
+        print(f"Configuration response: {config_response[:200]}...")  # Debug info
+        
         # If Q_CONFIG failed, try alternative
-        if 'comando desconocido' in response.lower() or 'unknown command' in response.lower():
-            print("Q_CONFIG no reconocido, probando comando alternativo...")
-            ser.write((config_cmd_alt + '\r\n').encode())
-            time.sleep(3)
+        if ('comando desconocido' in config_response.lower() or 
+            'unknown command' in config_response.lower() or
+            len(config_response.strip()) < 10):  # Very short response indicates failure
             
-            # Read new response
+            print("Q_CONFIG not recognized, trying alternative CONFIG command...")
+            ser.reset_input_buffer()
+            ser.write((config_cmd_alt + '\r\n').encode())
+            time.sleep(4)
+            
+            # Read alternative response
             while ser.in_waiting > 0:
-                response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+                config_response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
                 time.sleep(0.1)
-                
-        # TERCERO: Guardar configuración
-        print("Saving configuration...")
-        ser.write(('CONFIG_SAVE' + '\r\n').encode())
+        
+        # Step 3: Save configuration
+        print("Saving configuration to EEPROM...")
+        ser.reset_input_buffer()
+        ser.write(b'CONFIG_SAVE\r\n')
+        time.sleep(3)
+        
+        # Read save response
+        save_response = ""
+        while ser.in_waiting > 0:
+            save_response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+            time.sleep(0.1)
+        
+        print(f"Save response: {save_response[:100]}...")
+        
+        # Step 4: Start device
+        print("Starting device operation...")
+        ser.reset_input_buffer()
+        ser.write(b'START\r\n')
         time.sleep(2)
         
-        # CUARTO: Iniciar sistema
-        print("Starting device...")
-        ser.write(('START' + '\r\n').encode())
+        # Final status check
+        ser.write(b'NETWORK_STATUS\r\n')
         time.sleep(2)
         
-        print("\n[3/3]Configuration completed successfully")
+        final_response = ""
+        while ser.in_waiting > 0:
+            final_response += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+            time.sleep(0.1)
         
         ser.close()
         
-        # Check if configuration was successful
-        if any(word in response.lower() for word in ['completada exitosamente', 'configuracion guardada', 'listo y operando']):
-            print("Device ready to use")
+        print("\n=== CONFIGURATION RESULTS ===")
+        
+        # Check for success indicators
+        success_indicators = [
+            'network creada exitosamente',
+            'configuracion guardada exitosamente', 
+            'configuración guardada',
+            'network activa',
+            'listo y operando'
+        ]
+        
+        all_responses = (network_response + config_response + save_response + final_response).lower()
+        
+        if any(indicator in all_responses for indicator in success_indicators):
+            print("Configuration completed successfully")
+            print(f"Device ID: {args.id}")
+            print(f"Role: {args.role}")
+            print(f"Network: {args.channel}")
+            print(f"Password: {args.password}")
+        else:
+            print("Configuration may have failed")
+            print("Manual verification required:")
+            print(f"1. Connect to device: pio device monitor --port {port} --baud 115200")
+            print("2. Check status: STATUS")
+            print("3. Check network: NETWORK_STATUS")
+            print("4. If needed, configure manually:")
+            print(f"   - {network_cmd}")
+            print(f"   - {config_cmd_q}")
+            print("   - CONFIG_SAVE")
+            print("   - START")
         
         # Launch integrated monitor
         integrated_serial_monitor(port)
             
     except Exception as e:
-        print(f"ERROR: {e}")
-        print("Manual verification:")
-        print(f"1. pio device monitor --baud 115200 --port {port}")
-        print("2. Execute: STATUS")
-        print(f"3. If not configured, send manually:")
-        print(f"   {network_cmd}")        # ← AGREGAR ESTA LÍNEA
+        print(f"CONFIGURATION ERROR: {e}")
+        print("\n=== MANUAL RECOVERY ===")
+        print(f"1. Connect manually: pio device monitor --port {port} --baud 115200")
+        print("2. Send these commands one by one:")
+        print(f"   STATUS")
+        print(f"   {network_cmd}")
         print(f"   {config_cmd_q}")
-        print(f"   O alternativamente: {config_cmd_alt}")
-        print("4. Then: CONFIG_SAVE")
-        print("5. Finally: START")
-
+        print(f"   CONFIG_SAVE")
+        print(f"   START")
+        print(f"   NETWORK_STATUS")
+        print("\n3. Expected responses:")
+        print("   - 'Network ... creada exitosamente'")
+        print("   - 'Configuración guardada exitosamente'")
+        print("   - 'Network activa: [YOUR_CHANNEL]'")
+        sys.exit(1)
 if __name__ == "__main__":
     main()
