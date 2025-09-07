@@ -125,17 +125,7 @@ def detect_board_type(port):
                 description = port_info.description.lower()
                 manufacturer = (port_info.manufacturer or '').lower()
                 
-                # Patrones para LilyGo T-SIM7080-S3
-                lilygo_patterns = [
-                    'ch9102',           # USB chip común en LilyGo
-                    't-sim7080',        # Referencia directa
-                    'lilygo',           # Marca
-                    'sim7080'           # Modelo
-                ]
-                
-                if any(pattern in description for pattern in lilygo_patterns):
-                    print(f"Detected: LilyGo T-SIM7080-S3")
-                    return 'lilygo_tsim7080_s3'
+                # Solo detectar XIAO ESP32S3
         
         # Default: XIAO ESP32S3
         print(f"Detected: XIAO ESP32S3 (default)")

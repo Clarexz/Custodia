@@ -11,14 +11,9 @@
 #include <Arduino.h>
 #include <RadioLib.h>
 
-// Detección automática de hardware
-#ifdef LILYGO_TSIM7080_S3
-    #include "user_logic_lilygo.h"
-    #define BOARD_HAS_LORA 0
-#else
-    #include "user_logic.h"
-    #define BOARD_HAS_LORA 1
-#endif
+// Configuración de hardware
+#include "user_logic.h"
+#define BOARD_HAS_LORA 1
 
 /*
  * CONFIGURACIÓN DE RADIO
