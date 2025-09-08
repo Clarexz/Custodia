@@ -924,55 +924,30 @@ echo     ESP32 PORT DETECTION
 echo ========================================
 echo.
 
-REM Create temporary Python script for port detection with improved diagnostics
+REM Create simple Python script for COM port detection
 set "temp_py=%TEMP%\detect_ports_%RANDOM%.py"
 (
 echo import serial.tools.list_ports
-echo import sys
 echo.
-echo print^("Scanning for serial ports..."^)
-echo print^("-" * 40^)
+echo print^("Scanning for COM ports..."^)
 echo.
 echo ports = list^(serial.tools.list_ports.comports^(^)^)
+echo com_ports = []
 echo.
-echo if not ports:
-echo     print^("NO PORTS DETECTED AT ALL!"^)
-echo     print^("This usually means:"^)
-echo     print^("  1. No USB devices connected"^)
-echo     print^("  2. Driver issues"^)
-echo     print^("  3. Windows USB subsystem problem"^)
-echo     sys.exit^(1^)
-echo.
-echo # Show all detected ports for debugging
-echo print^(f"Found {len^(ports^)} total port^(s^):"^)
-echo print^(^)
-echo.
-echo all_com_ports = []
-echo for i, port in enumerate^(ports, 1^):
-echo     print^(f"Port {i}:"^)
-echo     print^(f"  Device: {port.device}"^)
-echo     print^(f"  Description: {port.description}"^)
-echo     print^(f"  Manufacturer: {port.manufacturer or 'Not specified'}"^)
-echo     print^(f"  Hardware ID: {port.hwid}"^)
-echo     print^(f"  VID:PID: {port.vid}:{port.pid if port.pid else 'N/A'}"^)
-echo     print^(^)
-echo     
-echo     # Collect all COM ports
+echo # Show all ports found
+echo for port in ports:
 echo     if port.device.startswith^('COM'^):
-echo         all_com_ports.append^(port^)
+echo         com_ports.append^(port^)
+echo         print^(f"Found: {port.device} - {port.description}"^)
 echo.
-echo print^("-" * 40^)
-echo.
-echo # More inclusive ESP32 detection
-echo esp32_candidates = []
-echo.
-echo for port in all_com_ports:
-echo     device_lower = port.device.lower^(^)
-echo     desc_lower = ^(port.description or ""^).lower^(^)
-echo     hwid_lower = ^(port.hwid or ""^).lower^(^)
-echo     manufacturer_lower = ^(port.manufacturer or ""^).lower^(^)
-echo     
-echo     # List of indicators that suggest ESP32/USB-Serial
+echo if not com_ports:
+echo     print^("NO_COM_PORTS_FOUND"^)
+echo elif len^(com_ports^) == 1:
+echo     print^(f"SINGLE_PORT:{com_ports[0].device}"^)
+echo else:
+echo     print^("MULTIPLE_PORTS_FOUND"^)
+echo     for i, port in enumerate^(com_ports, 1^):
+echo         print^(f"{i}:{port.device}:{port.description}"^)
 echo     indicators = [
 echo         "ch340", "ch341", "ch9102",  # Common Chinese chips
 echo         "cp210", "cp2102", "cp2104",  # Silicon Labs
@@ -1049,7 +1024,7 @@ if not errorlevel 1 (
     goto :manual_port_entry
 )
 
-echo !port_info! | findstr "SINGLE_ESP32:" >nul
+echo !port_info! | findstr "SINGLE_PORT:" >nul
 if not errorlevel 1 (
     for /f "tokens=2 delims=:" %%a in ("!port_info!") do set "SELECTED_PORT=%%a"
     echo.
@@ -1058,10 +1033,17 @@ if not errorlevel 1 (
     exit /b 0
 )
 
-echo !port_info! | findstr "MULTIPLE_ESP32:" >nul
+echo !port_info! | findstr "MULTIPLE_PORTS_FOUND" >nul
 if not errorlevel 1 (
-    echo Multiple ESP32 devices detected.
-    echo Please disconnect all but one ESP32 and try again.
+    echo Multiple COM ports detected:
+    echo !port_info!
+    echo.
+    set /p "port_choice=Enter COM port to use (e.g. COM3): "
+    if not "!port_choice!"=="" (
+        set "SELECTED_PORT=!port_choice!"
+        echo Selected port: !SELECTED_PORT!
+        exit /b 0
+    )
     goto :manual_port_entry
 )
 
