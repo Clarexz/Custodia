@@ -7,7 +7,9 @@ REM Automatically flashes and configures ESP32 devices
 
 REM Global variables
 set "SCRIPT_DIR=%~dp0"
-set "PROJECT_DIR=%SCRIPT_DIR%.."
+REM Remove trailing backslash if present
+if "!SCRIPT_DIR:~-1!"=="\" set "SCRIPT_DIR=!SCRIPT_DIR:~0,-1!"
+set "PROJECT_DIR=!SCRIPT_DIR!"
 set "PIO_CMD="
 set "SELECTED_PORT="
 set "BOARD_TYPE=seeed_xiao_esp32s3"
@@ -824,16 +826,35 @@ exit /b 0
 
 :check_project_structure
 echo [SETUP] Checking project structure...
+echo.
+echo DEBUG: Script directory: !SCRIPT_DIR!
+echo DEBUG: Project directory: !PROJECT_DIR!
+echo DEBUG: Looking for platformio.ini at: !PROJECT_DIR!\platformio.ini
+echo DEBUG: Looking for src directory at: !PROJECT_DIR!\src
+echo.
 
 if not exist "!PROJECT_DIR!\platformio.ini" (
     echo ERROR: platformio.ini not found in project
     echo Expected location: !PROJECT_DIR!\platformio.ini
+    echo.
+    echo TROUBLESHOOTING:
+    echo 1. Make sure flash_tool_windows.bat is in the same folder as platformio.ini
+    echo 2. Current working directory: %CD%
+    echo 3. Available files in project directory:
+    dir "!PROJECT_DIR!" /b 2>nul
+    echo.
+    pause
     exit /b 1
 )
 
 if not exist "!PROJECT_DIR!\src" (
     echo ERROR: src directory not found in project
     echo Expected location: !PROJECT_DIR!\src
+    echo.
+    echo Available directories:
+    dir "!PROJECT_DIR!" /ad /b 2>nul
+    echo.
+    pause
     exit /b 1
 )
 
