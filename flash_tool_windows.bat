@@ -579,14 +579,6 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Check project structure
-call :check_project_structure
-if errorlevel 1 (
-    echo ERROR: Project structure check failed
-    pause
-    exit /b 1
-)
-
 REM Detect ports
 call :detect_ports
 if errorlevel 1 (
