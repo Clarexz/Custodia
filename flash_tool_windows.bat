@@ -733,29 +733,65 @@ exit /b 0
 :check_dependencies
 echo [SETUP] Checking dependencies...
 
-REM Check Python
+REM Check Python - try both 'python' and 'py' commands
+set "PYTHON_CMD="
+set "PIP_CMD="
+
+REM Try 'python' first
 python --version >nul 2>&1
-if errorlevel 1 (
-    echo ERROR: Python not found
-    echo Please install Python from https://python.org
-    exit /b 1
+if not errorlevel 1 (
+    set "PYTHON_CMD=python"
+    set "PIP_CMD=pip"
+    echo Python found: python command
+    goto :python_found
 )
 
+REM Try 'py' command (common in Windows official installer)
+py --version >nul 2>&1
+if not errorlevel 1 (
+    set "PYTHON_CMD=py"
+    set "PIP_CMD=py -m pip"
+    echo Python found: py command
+    goto :python_found
+)
+
+REM Python not found - show installation instructions
+echo ERROR: Python not found
+echo.
+echo PYTHON INSTALLATION INSTRUCTIONS:
+echo 1. Go to https://python.org/downloads/
+echo 2. Download Python 3.8 or newer for Windows
+echo 3. Run the installer and IMPORTANT: Check "Add Python to PATH"
+echo 4. Restart this tool after installation
+echo.
+echo Alternative: Install from Microsoft Store
+echo 1. Open Microsoft Store
+echo 2. Search for "Python 3.11" or newer
+echo 3. Install the official Python package
+echo.
+pause
+exit /b 1
+
+:python_found
+
 REM Check pip
-pip --version >nul 2>&1
+%PIP_CMD% --version >nul 2>&1
 if errorlevel 1 (
     echo ERROR: pip not found
-    echo Please install pip or repair Python installation
+    echo Try: %PYTHON_CMD% -m ensurepip --upgrade
+    pause
     exit /b 1
 )
 
 REM Check/install pyserial
-python -c "import serial" >nul 2>&1
+%PYTHON_CMD% -c "import serial" >nul 2>&1
 if errorlevel 1 (
     echo Installing pyserial...
-    pip install pyserial
+    %PIP_CMD% install pyserial
     if errorlevel 1 (
         echo ERROR: Failed to install pyserial
+        echo Try running as Administrator or check internet connection
+        pause
         exit /b 1
     )
     echo pyserial installed successfully
@@ -778,10 +814,11 @@ if exist "%USERPROFILE%\.platformio\penv\Scripts\pio.exe" (
 
 REM Try to install PlatformIO
 echo PlatformIO not found. Installing...
-pip install platformio
+%PIP_CMD% install platformio
 if errorlevel 1 (
     echo ERROR: Failed to install PlatformIO
-    echo Please install manually: pip install platformio
+    echo Please install manually: %PIP_CMD% install platformio
+    pause
     exit /b 1
 )
 set "PIO_CMD=pio"
@@ -863,7 +900,7 @@ echo             print^(f"{i}:{device}:{desc}"^)
 ) > "!temp_py!"
 
 REM Run Python script and capture output
-for /f "delims=" %%i in ('python "!temp_py!" 2^>nul') do set "port_info=%%i"
+for /f "delims=" %%i in ('%PYTHON_CMD% "!temp_py!" 2^>nul') do set "port_info=%%i"
 del "!temp_py!" >nul 2>&1
 
 if "!port_info!"=="" (
@@ -1048,7 +1085,7 @@ echo     sys.exit^(1^)
 ) > "!temp_py!"
 
 REM Run Python script
-python "!temp_py!" 2>nul
+%PYTHON_CMD% "!temp_py!" 2>nul
 set "config_result=!errorlevel!"
 del "!temp_py!" >nul 2>&1
 
