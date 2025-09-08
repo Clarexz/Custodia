@@ -683,13 +683,15 @@ goto :count_chars
 if !len! lss 3 exit /b 1
 if !len! gtr 20 exit /b 1
 
-REM Simple character validation - check for spaces and a few problematic chars
-echo !channel! | findstr " " >nul 2>&1 && exit /b 1
-echo !channel! | findstr "	" >nul 2>&1 && exit /b 1
-echo !channel! | findstr "/" >nul 2>&1 && exit /b 1
-echo !channel! | findstr ":" >nul 2>&1 && exit /b 1
-REM Skip problematic special characters that cause command line errors
-REM Assume channel name is valid if it passes basic checks
+REM Character validation using string operations instead of findstr
+REM Check for spaces
+if not "!channel!"=="!channel: =!" exit /b 1
+REM Check for tabs (using a literal tab character)
+if not "!channel!"=="!channel:	=!" exit /b 1
+REM Check for forward slash
+if not "!channel!"=="!channel:/=!" exit /b 1
+REM Check for colon
+if not "!channel!"=="!channel::=!" exit /b 1
 
 REM Check reserved names
 call :to_upper channel
