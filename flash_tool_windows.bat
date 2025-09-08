@@ -800,7 +800,7 @@ REM Check PlatformIO
 pio --version >nul 2>&1
 if not errorlevel 1 (
     set "PIO_CMD=pio"
-    echo PlatformIO CLI found
+    echo PlatformIO CLI found in PATH
     goto :pio_found
 )
 
@@ -811,16 +811,49 @@ if exist "%USERPROFILE%\.platformio\penv\Scripts\pio.exe" (
     goto :pio_found
 )
 
-REM Try to install PlatformIO
-echo PlatformIO not found. Installing...
-%PIP_CMD% install platformio
-if errorlevel 1 (
-    echo ERROR: Failed to install PlatformIO
-    echo Please install manually: %PIP_CMD% install platformio
-    pause
-    exit /b 1
+REM Check Python Scripts directory
+%PYTHON_CMD% -m site --user-base >nul 2>&1
+for /f "delims=" %%i in ('%PYTHON_CMD% -c "import site; print(site.USER_BASE + '\\Scripts')"') do set "USER_SCRIPTS=%%i"
+if exist "!USER_SCRIPTS!\pio.exe" (
+    set "PIO_CMD=!USER_SCRIPTS!\pio.exe"
+    echo PlatformIO found in user scripts directory
+    goto :pio_found
 )
-set "PIO_CMD=pio"
+
+REM Try to install PlatformIO globally
+echo PlatformIO not found. Installing globally...
+echo.
+echo Installing PlatformIO Core globally...
+%PIP_CMD% install --upgrade platformio
+if errorlevel 1 (
+    echo ERROR: Global installation failed. Trying user installation...
+    %PIP_CMD% install --user --upgrade platformio
+    if errorlevel 1 (
+        echo ERROR: Failed to install PlatformIO
+        echo.
+        echo MANUAL INSTALLATION INSTRUCTIONS:
+        echo 1. Open Command Prompt as Administrator
+        echo 2. Run: %PIP_CMD% install --upgrade platformio
+        echo 3. Or install manually from: https://platformio.org/install
+        echo.
+        pause
+        exit /b 1
+    )
+    REM After user install, update the path
+    for /f "delims=" %%i in ('%PYTHON_CMD% -c "import site; print(site.USER_BASE + '\\Scripts')"') do set "USER_SCRIPTS=%%i"
+    if exist "!USER_SCRIPTS!\pio.exe" (
+        set "PIO_CMD=!USER_SCRIPTS!\pio.exe"
+        echo PlatformIO installed in user scripts directory
+    ) else (
+        set "PIO_CMD=%PYTHON_CMD% -m platformio"
+        echo PlatformIO installed as Python module
+    )
+) else (
+    REM Global install successful
+    set "PIO_CMD=pio"
+    echo PlatformIO installed globally
+    echo NOTE: You may need to restart Command Prompt to use 'pio' command globally
+)
 
 :pio_found
 echo Dependencies checked successfully
@@ -874,47 +907,63 @@ set "temp_py=%TEMP%\detect_ports_%RANDOM%.py"
 echo import serial.tools.list_ports
 echo import sys
 echo.
+echo print^("Scanning all available ports..."^)
 echo ports = serial.tools.list_ports.comports^(^)
 echo esp32_ports = []
+echo all_com_ports = []
 echo.
 echo for port in ports:
 echo     device_lower = port.device.lower^(^)
 echo     desc_lower = port.description.lower^(^)
 echo     manufacturer_lower = ^(port.manufacturer or ""^).lower^(^)
+echo     
+echo     print^(f"Found port: {port.device} - {port.description} - {port.manufacturer or 'Unknown'}"^)
 echo.    
-echo     # ESP32 indicators for Windows
-echo     esp32_indicators = ["cp210", "ch340", "ch341", "ft232", "pl2303", "esp32", "serial", "uart", "usb-serial", "com"]
+echo     # Collect all COM ports
+echo     if "com" in device_lower:
+echo         all_com_ports.append^(^(port.device, port.description, port.manufacturer or "Unknown"^)^)
+echo.    
+echo     # ESP32 indicators for Windows - be more inclusive
+echo     esp32_indicators = ["cp210", "ch340", "ch341", "ft232", "pl2303", "esp32", "serial", "uart", "usb-serial", "com", "silicon", "ch9102"]
 echo.    
 echo     is_esp32_candidate = False
 echo.    
-echo     # Check device name
+echo     # Check device name - accept all COM ports as potential ESP32
 echo     if "com" in device_lower:
 echo         is_esp32_candidate = True
 echo.    
-echo     # Check description
+echo     # Check description for common USB-Serial chips
 echo     if any^(indicator in desc_lower for indicator in esp32_indicators^):
 echo         is_esp32_candidate = True
 echo.    
-echo     # Check manufacturer
-echo     if any^(mfg in manufacturer_lower for mfg in ["silicon labs", "ftdi", "prolific", "ch340"]^):
+echo     # Check manufacturer for common USB-Serial chip makers
+echo     if any^(mfg in manufacturer_lower for mfg in ["silicon labs", "ftdi", "prolific", "ch340", "wch", "qinheng"]^):
 echo         is_esp32_candidate = True
 echo.    
 echo     if is_esp32_candidate:
-echo         esp32_ports.append^(^(port.device, port.description^)^)
+echo         esp32_ports.append^(^(port.device, port.description, port.manufacturer or "Unknown"^)^)
+echo.
+echo print^(f"Total ports found: {len^(ports^)}"^)
+echo print^(f"COM ports found: {len^(all_com_ports^)}"^)
+echo print^(f"ESP32 candidates: {len^(esp32_ports^)}"^)
 echo.
 echo if not esp32_ports:
 echo     print^("NO_ESP32_FOUND"^)
-echo     if ports:
+echo     if all_com_ports:
+echo         print^("AVAILABLE_COM_PORTS:"^)
+echo         for i, ^(device, desc, mfg^) in enumerate^(all_com_ports, 1^):
+echo             print^(f"{i}:{device}:{desc} ^({mfg}^)"^)
+echo     elif ports:
 echo         print^("AVAILABLE_PORTS:"^)
 echo         for i, port in enumerate^(ports, 1^):
-echo             print^(f"{i}:{port.device}:{port.description}"^)
+echo             print^(f"{i}:{port.device}:{port.description} ^({port.manufacturer or 'Unknown'}^)"^)
 echo else:
 echo     if len^(esp32_ports^) == 1:
 echo         print^(f"SINGLE_ESP32:{esp32_ports[0][0]}:{esp32_ports[0][1]}"^)
 echo     else:
 echo         print^("MULTIPLE_ESP32:"^)
-echo         for i, ^(device, desc^) in enumerate^(esp32_ports, 1^):
-echo             print^(f"{i}:{device}:{desc}"^)
+echo         for i, ^(device, desc, mfg^) in enumerate^(esp32_ports, 1^):
+echo             print^(f"{i}:{device}:{desc} ^({mfg}^)"^)
 ) > "!temp_py!"
 
 REM Run Python script and capture output
@@ -928,7 +977,21 @@ if "!port_info!"=="" (
 
 if "!port_info!"=="NO_ESP32_FOUND" (
     echo No ESP32 devices detected automatically.
-    echo Please connect your ESP32 device and try again.
+    echo.
+    echo MANUAL PORT SELECTION:
+    echo If you can see your ESP32 in Device Manager as COM3, you can force it:
+    echo 1. Make sure ESP32 is connected via USB
+    echo 2. Check Device Manager for COM port number
+    echo 3. Manually set port by editing this script or using:
+    echo    set SELECTED_PORT=COM3
+    echo.
+    set /p "manual_port=Enter COM port manually (e.g. COM3) or press Enter to exit: "
+    if not "!manual_port!"=="" (
+        set "SELECTED_PORT=!manual_port!"
+        echo Using manual port: !SELECTED_PORT!
+        exit /b 0
+    )
+    pause
     exit /b 1
 )
 
