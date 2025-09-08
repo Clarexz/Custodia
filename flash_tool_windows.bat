@@ -732,29 +732,20 @@ exit /b 0
 :check_dependencies
 echo [SETUP] Checking dependencies...
 
-REM Check Python - try both 'python' and 'py' commands
+REM Check Python first
 set "PYTHON_CMD="
 set "PIP_CMD="
 
-REM Try 'python' first
-python --version >nul 2>&1
-if not errorlevel 1 (
-    set "PYTHON_CMD=python"
-    set "PIP_CMD=pip"
-    echo Python found: python command
-    goto :python_found
+REM Try different Python commands
+for %%p in (python python3 py) do (
+    %%p --version >nul 2>&1
+    if not errorlevel 1 (
+        set "PYTHON_CMD=%%p"
+        set "PIP_CMD=%%p -m pip"
+        goto :python_found
+    )
 )
 
-REM Try 'py' command (common in Windows official installer)
-py --version >nul 2>&1
-if not errorlevel 1 (
-    set "PYTHON_CMD=py"
-    set "PIP_CMD=py -m pip"
-    echo Python found: py command
-    goto :python_found
-)
-
-REM Python not found - show installation instructions
 echo ERROR: Python not found
 echo.
 echo PYTHON INSTALLATION INSTRUCTIONS:
@@ -772,6 +763,7 @@ pause
 exit /b 1
 
 :python_found
+echo Python found: %PYTHON_CMD%
 
 REM Check pip
 %PIP_CMD% --version >nul 2>&1
@@ -796,284 +788,314 @@ if errorlevel 1 (
     echo pyserial installed successfully
 )
 
-REM Check PlatformIO
-pio --version >nul 2>&1
+REM === PLATFORMIO DETECTION IMPROVED ===
+echo.
+echo Checking PlatformIO installation...
+
+REM Method 1: Check if pio is in PATH
+where pio >nul 2>&1
 if not errorlevel 1 (
     set "PIO_CMD=pio"
-    echo PlatformIO CLI found in PATH
+    echo PlatformIO found in system PATH
     goto :pio_found
 )
 
-REM Try alternative locations
+REM Method 2: Check user's .platformio directory
 if exist "%USERPROFILE%\.platformio\penv\Scripts\pio.exe" (
     set "PIO_CMD=%USERPROFILE%\.platformio\penv\Scripts\pio.exe"
     echo PlatformIO found in user directory
     goto :pio_found
 )
 
-REM Check Python Scripts directory
-%PYTHON_CMD% -m site --user-base >nul 2>&1
-for /f "delims=" %%i in ('%PYTHON_CMD% -c "import site; print(site.USER_BASE + '\\Scripts')"') do set "USER_SCRIPTS=%%i"
-if exist "!USER_SCRIPTS!\pio.exe" (
-    set "PIO_CMD=!USER_SCRIPTS!\pio.exe"
-    echo PlatformIO found in user scripts directory
+REM Method 3: Check Python Scripts directory (pip install location)
+for /f "delims=" %%i in ('%PYTHON_CMD% -c "import site; print(site.USER_BASE)"') do set "USER_BASE=%%i"
+if exist "%USER_BASE%\Scripts\pio.exe" (
+    set "PIO_CMD=%USER_BASE%\Scripts\pio.exe"
+    echo PlatformIO found in Python user scripts
     goto :pio_found
 )
 
-REM Try to install PlatformIO globally
-echo PlatformIO not found. Installing globally...
-echo.
-echo Installing PlatformIO Core globally...
-%PIP_CMD% install --upgrade platformio
-if errorlevel 1 (
-    echo ERROR: Global installation failed. Trying user installation...
-    %PIP_CMD% install --user --upgrade platformio
-    if errorlevel 1 (
-        echo ERROR: Failed to install PlatformIO
-        echo.
-        echo MANUAL INSTALLATION INSTRUCTIONS:
-        echo 1. Open Command Prompt as Administrator
-        echo 2. Run: %PIP_CMD% install --upgrade platformio
-        echo 3. Or install manually from: https://platformio.org/install
-        echo.
-        pause
-        exit /b 1
-    )
-    REM After user install, update the path
-    for /f "delims=" %%i in ('%PYTHON_CMD% -c "import site; print(site.USER_BASE + '\\Scripts')"') do set "USER_SCRIPTS=%%i"
-    if exist "!USER_SCRIPTS!\pio.exe" (
-        set "PIO_CMD=!USER_SCRIPTS!\pio.exe"
-        echo PlatformIO installed in user scripts directory
-    ) else (
-        set "PIO_CMD=%PYTHON_CMD% -m platformio"
-        echo PlatformIO installed as Python module
-    )
-) else (
-    REM Global install successful
-    set "PIO_CMD=pio"
-    echo PlatformIO installed globally
-    echo NOTE: You may need to restart Command Prompt to use 'pio' command globally
+REM Method 4: Check if installed as Python module
+%PYTHON_CMD% -m platformio --version >nul 2>&1
+if not errorlevel 1 (
+    set "PIO_CMD=%PYTHON_CMD% -m platformio"
+    echo PlatformIO found as Python module
+    goto :pio_found
 )
 
+REM Method 5: Check local Python Scripts
+for /f "delims=" %%i in ('%PYTHON_CMD% -c "import sys; import os; print(os.path.dirname(sys.executable))"') do set "PYTHON_DIR=%%i"
+if exist "%PYTHON_DIR%\Scripts\pio.exe" (
+    set "PIO_CMD=%PYTHON_DIR%\Scripts\pio.exe"
+    echo PlatformIO found in Python installation directory
+    goto :pio_found
+)
+
+REM If not found, try to install it
+echo PlatformIO not found. Installing...
+echo.
+%PIP_CMD% install --upgrade --force-reinstall platformio
+if errorlevel 1 (
+    echo ERROR: Failed to install PlatformIO
+    echo Try manually: %PIP_CMD% install --user platformio
+    pause
+    exit /b 1
+)
+
+REM After installation, try to find it again
+timeout /t 3 /nobreak >nul
+
+REM Re-check all locations after installation
+for /f "delims=" %%i in ('%PYTHON_CMD% -c "import site; print(site.USER_BASE)"') do set "USER_BASE=%%i"
+if exist "%USER_BASE%\Scripts\pio.exe" (
+    set "PIO_CMD=%USER_BASE%\Scripts\pio.exe"
+    echo PlatformIO installed successfully in user scripts
+    goto :pio_found
+)
+
+REM Try as module
+%PYTHON_CMD% -m platformio --version >nul 2>&1
+if not errorlevel 1 (
+    set "PIO_CMD=%PYTHON_CMD% -m platformio"
+    echo PlatformIO installed as Python module
+    goto :pio_found
+)
+
+echo WARNING: PlatformIO installed but not found in expected locations
+echo Trying to use it as Python module...
+set "PIO_CMD=%PYTHON_CMD% -m platformio"
+
 :pio_found
+echo.
+echo Testing PlatformIO command: %PIO_CMD%
+%PIO_CMD% --version
+if errorlevel 1 (
+    echo ERROR: PlatformIO command not working
+    echo Please install manually and ensure it's in PATH
+    pause
+    exit /b 1
+)
+
 echo Dependencies checked successfully
 exit /b 0
 
-:check_project_structure
-echo [SETUP] Checking project structure...
-echo.
-echo DEBUG: Script directory: !SCRIPT_DIR!
-echo DEBUG: Project directory: !PROJECT_DIR!
-echo DEBUG: Looking for platformio.ini at: !PROJECT_DIR!\platformio.ini
-echo DEBUG: Looking for src directory at: !PROJECT_DIR!\src
-echo.
-
-if not exist "!PROJECT_DIR!\platformio.ini" (
-    echo ERROR: platformio.ini not found in project
-    echo Expected location: !PROJECT_DIR!\platformio.ini
-    echo.
-    echo TROUBLESHOOTING:
-    echo 1. Make sure flash_tool_windows.bat is in the same folder as platformio.ini
-    echo 2. Current working directory: %CD%
-    echo 3. Available files in project directory:
-    dir "!PROJECT_DIR!" /b 2>nul
-    echo.
-    pause
-    exit /b 1
-)
-
-if not exist "!PROJECT_DIR!\src" (
-    echo ERROR: src directory not found in project
-    echo Expected location: !PROJECT_DIR!\src
-    echo.
-    echo Available directories:
-    dir "!PROJECT_DIR!" /ad /b 2>nul
-    echo.
-    pause
-    exit /b 1
-)
-
-echo Project structure verified successfully
-echo Project directory: !PROJECT_DIR!
-echo Script directory: !SCRIPT_DIR!
-exit /b 0
-
 :detect_ports
-echo Detecting ESP32 devices...
+echo.
+echo ========================================
+echo     ESP32 PORT DETECTION
+echo ========================================
+echo.
 
-REM Create temporary Python script for port detection
+REM Create temporary Python script for port detection with improved diagnostics
 set "temp_py=%TEMP%\detect_ports_%RANDOM%.py"
 (
 echo import serial.tools.list_ports
 echo import sys
 echo.
-echo print^("Scanning all available ports..."^)
-echo ports = serial.tools.list_ports.comports^(^)
-echo esp32_ports = []
-echo all_com_ports = []
+echo print^("Scanning for serial ports..."^)
+echo print^("-" * 40^)
 echo.
-echo for port in ports:
+echo ports = list^(serial.tools.list_ports.comports^(^)^)
+echo.
+echo if not ports:
+echo     print^("NO PORTS DETECTED AT ALL!"^)
+echo     print^("This usually means:"^)
+echo     print^("  1. No USB devices connected"^)
+echo     print^("  2. Driver issues"^)
+echo     print^("  3. Windows USB subsystem problem"^)
+echo     sys.exit^(1^)
+echo.
+echo # Show all detected ports for debugging
+echo print^(f"Found {len^(ports^)} total port^(s^):"^)
+echo print^(^)
+echo.
+echo all_com_ports = []
+echo for i, port in enumerate^(ports, 1^):
+echo     print^(f"Port {i}:"^)
+echo     print^(f"  Device: {port.device}"^)
+echo     print^(f"  Description: {port.description}"^)
+echo     print^(f"  Manufacturer: {port.manufacturer or 'Not specified'}"^)
+echo     print^(f"  Hardware ID: {port.hwid}"^)
+echo     print^(f"  VID:PID: {port.vid}:{port.pid if port.pid else 'N/A'}"^)
+echo     print^(^)
+echo     
+echo     # Collect all COM ports
+echo     if port.device.startswith^('COM'^):
+echo         all_com_ports.append^(port^)
+echo.
+echo print^("-" * 40^)
+echo.
+echo # More inclusive ESP32 detection
+echo esp32_candidates = []
+echo.
+echo for port in all_com_ports:
 echo     device_lower = port.device.lower^(^)
-echo     desc_lower = port.description.lower^(^)
+echo     desc_lower = ^(port.description or ""^).lower^(^)
+echo     hwid_lower = ^(port.hwid or ""^).lower^(^)
 echo     manufacturer_lower = ^(port.manufacturer or ""^).lower^(^)
 echo     
-echo     print^(f"Found port: {port.device} - {port.description} - {port.manufacturer or 'Unknown'}"^)
-echo.    
-echo     # Collect all COM ports
-echo     if "com" in device_lower:
-echo         all_com_ports.append^(^(port.device, port.description, port.manufacturer or "Unknown"^)^)
-echo.    
-echo     # ESP32 indicators for Windows - be more inclusive
-echo     esp32_indicators = ["cp210", "ch340", "ch341", "ft232", "pl2303", "esp32", "serial", "uart", "usb-serial", "com", "silicon", "ch9102"]
-echo.    
-echo     is_esp32_candidate = False
-echo.    
-echo     # Check device name - accept all COM ports as potential ESP32
-echo     if "com" in device_lower:
-echo         is_esp32_candidate = True
-echo.    
-echo     # Check description for common USB-Serial chips
-echo     if any^(indicator in desc_lower for indicator in esp32_indicators^):
-echo         is_esp32_candidate = True
-echo.    
-echo     # Check manufacturer for common USB-Serial chip makers
-echo     if any^(mfg in manufacturer_lower for mfg in ["silicon labs", "ftdi", "prolific", "ch340", "wch", "qinheng"]^):
-echo         is_esp32_candidate = True
-echo.    
-echo     if is_esp32_candidate:
-echo         esp32_ports.append^(^(port.device, port.description, port.manufacturer or "Unknown"^)^)
+echo     # List of indicators that suggest ESP32/USB-Serial
+echo     indicators = [
+echo         "ch340", "ch341", "ch9102",  # Common Chinese chips
+echo         "cp210", "cp2102", "cp2104",  # Silicon Labs
+echo         "ft232", "ftdi",              # FTDI chips  
+echo         "pl2303", "prolific",         # Prolific
+echo         "esp32", "espressif",         # ESP specific
+echo         "serial", "uart",             # Generic serial
+echo         "usb-serial", "usb serial",   # Generic USB serial
+echo         "arduino", "wch"              # Arduino/WCH chips
+echo     ]
+echo     
+echo     # Check if any indicator is present
+echo     is_likely_esp32 = False
+echo     matched_indicator = ""
+echo     
+echo     for indicator in indicators:
+echo         if ^(indicator in desc_lower or 
+echo             indicator in hwid_lower or 
+echo             indicator in manufacturer_lower^):
+echo             is_likely_esp32 = True
+echo             matched_indicator = indicator
+echo             break
+echo     
+echo     # Also accept any COM port as potential ESP32 if no specific matches
+echo     if not is_likely_esp32 and port.device.startswith^('COM'^):
+echo         is_likely_esp32 = True
+echo         matched_indicator = "generic COM port"
+echo     
+echo     if is_likely_esp32:
+echo         esp32_candidates.append^(port^)
+echo         print^(f"ESP32 Candidate: {port.device} ^(matched: {matched_indicator}^)"^)
 echo.
-echo print^(f"Total ports found: {len^(ports^)}"^)
-echo print^(f"COM ports found: {len^(all_com_ports^)}"^)
-echo print^(f"ESP32 candidates: {len^(esp32_ports^)}"^)
+echo print^(^)
+echo print^("=" * 40^)
 echo.
-echo if not esp32_ports:
+echo # Output decision for batch script
+echo if not esp32_candidates:
 echo     print^("NO_ESP32_FOUND"^)
 echo     if all_com_ports:
-echo         print^("AVAILABLE_COM_PORTS:"^)
-echo         for i, ^(device, desc, mfg^) in enumerate^(all_com_ports, 1^):
-echo             print^(f"{i}:{device}:{desc} ^({mfg}^)"^)
-echo     elif ports:
-echo         print^("AVAILABLE_PORTS:"^)
-echo         for i, port in enumerate^(ports, 1^):
-echo             print^(f"{i}:{port.device}:{port.description} ^({port.manufacturer or 'Unknown'}^)"^)
+echo         print^("But found these COM ports:"^)
+echo         for port in all_com_ports:
+echo             print^(f"  - {port.device}: {port.description}"^)
+echo elif len^(esp32_candidates^) == 1:
+echo     print^(f"SINGLE_ESP32:{esp32_candidates[0].device}"^)
 echo else:
-echo     if len^(esp32_ports^) == 1:
-echo         print^(f"SINGLE_ESP32:{esp32_ports[0][0]}:{esp32_ports[0][1]}"^)
-echo     else:
-echo         print^("MULTIPLE_ESP32:"^)
-echo         for i, ^(device, desc, mfg^) in enumerate^(esp32_ports, 1^):
-echo             print^(f"{i}:{device}:{desc} ^({mfg}^)"^)
+echo     print^("MULTIPLE_ESP32:"^)
+echo     for i, port in enumerate^(esp32_candidates, 1^):
+echo         print^(f"{i}:{port.device}:{port.description}"^)
 ) > "!temp_py!"
 
-REM Run Python script and capture output
-for /f "delims=" %%i in ('%PYTHON_CMD% "!temp_py!" 2^>nul') do set "port_info=%%i"
+REM Run detection script
+echo Running port detection script...
+%PYTHON_CMD% "!temp_py!" 2>&1
+echo.
+
+REM Capture the last output line for decision
+set "port_info="
+for /f "delims=" %%i in ('%PYTHON_CMD% "!temp_py!" 2^>^&1 ^| findstr /B "SINGLE_ESP32: MULTIPLE_ESP32: NO_ESP32_FOUND"') do set "port_info=%%i"
+
+REM Clean up temp file
 del "!temp_py!" >nul 2>&1
 
+REM Process detection results
 if "!port_info!"=="" (
-    echo ERROR: Could not detect ports (pyserial issue)
-    exit /b 1
+    echo ERROR: Port detection script failed
+    echo Falling back to manual port entry...
+    goto :manual_port_entry
 )
 
-if "!port_info!"=="NO_ESP32_FOUND" (
-    echo No ESP32 devices detected automatically.
+echo !port_info! | findstr "NO_ESP32_FOUND" >nul
+if not errorlevel 1 (
     echo.
-    echo DRIVER DIAGNOSIS AND TROUBLESHOOTING:
-    echo =====================================
-    echo.
-    echo Step 1: Check Device Manager
-    echo 1. Press Win+X and select "Device Manager"
-    echo 2. Look for your ESP32 under these sections:
-    echo    - "Ports (COM & LPT)" - Should show COM3, COM4, etc.
-    echo    - "Other devices" - May show unknown device with yellow warning
-    echo    - "Universal Serial Bus controllers"
-    echo.
-    echo Step 2: Driver Issues - Common Solutions
-    echo ESP32 uses different USB-to-Serial chips. Check which one you have:
-    echo.
-    echo A) CH340/CH341 Chip (Most Common):
-    echo    - Download driver from: http://www.wch.cn/downloads/CH341SER_EXE.html
-    echo    - Or search "CH340 driver Windows" 
-    echo    - Device shows as "USB-SERIAL CH340" or similar
-    echo.
-    echo B) CP2102/CP2104 Chip (Silicon Labs):
-    echo    - Download from: https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers
-    echo    - Device shows as "CP210x USB to UART Bridge" or similar
-    echo.
-    echo C) FT232 Chip (FTDI):
-    echo    - Usually auto-installs with Windows Update
-    echo    - Manual download: https://ftdichip.com/drivers/vcp-drivers/
-    echo.
-    echo Step 3: Physical Connection Issues
-    echo 1. Try different USB cables (some are power-only, not data)
-    echo 2. Try different USB ports (avoid USB hubs)
-    echo 3. Check ESP32 power LED is on
-    echo 4. Some boards need to hold BOOT button while connecting
-    echo.
-    echo Step 4: Windows Driver Installation
-    echo If device appears as "Unknown Device" in Device Manager:
-    echo 1. Right-click the unknown device
-    echo 2. Select "Update Driver"
-    echo 3. Choose "Browse my computer for drivers"
-    echo 4. Point to downloaded driver folder
-    echo.
-    echo Step 5: Force COM Port Assignment
-    echo If you can see a COM port in Device Manager:
-    echo 1. Note the COM number (e.g., COM3, COM4)
-    echo 2. Enter it below to force selection
-    echo.
-    set /p "manual_port=Enter COM port manually (e.g. COM3) or press Enter to exit: "
-    if not "!manual_port!"=="" (
-        echo Testing connection to !manual_port!...
-        
-        REM Create a simple Python script to test the port
-        set "test_py=%TEMP%\test_port_%RANDOM%.py"
-        (
-        echo import serial
-        echo import time
-        echo try:
-        echo     ser = serial.Serial^('!manual_port!', 115200, timeout=1^)
-        echo     print^("SUCCESS: Port !manual_port! opened successfully"^)
-        echo     ser.close^(^)
-        echo except Exception as e:
-        echo     print^(f"ERROR: Cannot open !manual_port!: {e}"^)
-        echo     print^("This usually means:"^)
-        echo     print^("1. Driver not installed correctly"^)
-        echo     print^("2. Port is being used by another program"^)
-        echo     print^("3. ESP32 not properly connected"^)
-        ) > "!test_py!"
-        
-        %PYTHON_CMD% "!test_py!" 2>nul
-        del "!test_py!" >nul 2>&1
-        
-        set "SELECTED_PORT=!manual_port!"
-        echo Using manual port: !SELECTED_PORT!
-        exit /b 0
-    )
-    echo.
-    echo Additional Resources:
-    echo - ESP32 Setup Guide: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/establish-serial-connection.html
-    echo - Random Nerd Tutorials ESP32 Guide: https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
-    echo.
-    pause
-    exit /b 1
+    echo No ESP32 detected automatically.
+    goto :manual_port_entry
 )
 
 echo !port_info! | findstr "SINGLE_ESP32:" >nul
 if not errorlevel 1 (
     for /f "tokens=2 delims=:" %%a in ("!port_info!") do set "SELECTED_PORT=%%a"
-    echo ESP32 device detected: !SELECTED_PORT!
+    echo.
+    echo SUCCESS: ESP32 detected on !SELECTED_PORT!
+    echo.
     exit /b 0
 )
 
 echo !port_info! | findstr "MULTIPLE_ESP32:" >nul
 if not errorlevel 1 (
-    echo Multiple ESP32 devices found.
-    echo Please connect only one ESP32 device and retry.
+    echo Multiple ESP32 devices detected.
+    echo Please disconnect all but one ESP32 and try again.
+    goto :manual_port_entry
+)
+
+:manual_port_entry
+echo.
+echo ========================================
+echo     MANUAL PORT SELECTION
+echo ========================================
+echo.
+echo The automatic detection couldn't find your ESP32.
+echo.
+echo Common reasons:
+echo   1. Driver not installed (CH340, CP2102, etc.)
+echo   2. Bad USB cable (some are power-only)
+echo   3. ESP32 not in bootloader mode
+echo   4. Port already in use by another program
+echo.
+echo Check Device Manager (Win+X, then M) for COM ports.
+echo Your ESP32 should appear under "Ports (COM & LPT)"
+echo.
+set /p "manual_port=Enter your COM port (e.g., COM3, COM4): "
+
+if "!manual_port!"=="" (
+    echo No port entered. Exiting.
     exit /b 1
 )
 
-exit /b 1
+REM Validate manual port entry
+echo !manual_port! | findstr /R "^COM[0-9][0-9]*$" >nul
+if errorlevel 1 (
+    echo ERROR: Invalid port format. Use format like COM3, COM4, etc.
+    exit /b 1
+)
+
+echo.
+echo Testing connection to !manual_port!...
+
+REM Test if port can be opened
+set "test_py=%TEMP%\test_port_%RANDOM%.py"
+(
+echo import serial
+echo import sys
+echo try:
+echo     ser = serial.Serial^('!manual_port!', 115200, timeout=1^)
+echo     print^(f"SUCCESS: Port {ser.name} opened successfully"^)
+echo     ser.close^(^)
+echo except serial.SerialException as e:
+echo     print^(f"ERROR: Cannot open !manual_port!"^)
+echo     print^(f"Reason: {e}"^)
+echo     sys.exit^(1^)
+echo except Exception as e:
+echo     print^(f"ERROR: {e}"^)
+echo     sys.exit^(1^)
+) > "!test_py!"
+
+%PYTHON_CMD% "!test_py!"
+if errorlevel 1 (
+    del "!test_py!" >nul 2>&1
+    echo.
+    echo Failed to open !manual_port!
+    echo Please check:
+    echo   - Port number is correct
+    echo   - No other program is using the port
+    echo   - USB cable is connected properly
+    exit /b 1
+)
+
+del "!test_py!" >nul 2>&1
+
+set "SELECTED_PORT=!manual_port!"
+echo Using manual port: !SELECTED_PORT!
+exit /b 0
 
 :clean_device_flash
 echo.
