@@ -579,6 +579,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Check project structure
+call :check_project_structure
+if errorlevel 1 (
+    echo ERROR: Project structure check failed
+    pause
+    exit /b 1
+)
+
 REM Detect ports
 call :detect_ports
 if errorlevel 1 (
@@ -867,8 +875,46 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-
 echo Dependencies checked successfully
+exit /b 0
+
+:check_project_structure
+echo [SETUP] Checking project structure...
+echo.
+echo DEBUG: Script directory: !SCRIPT_DIR!
+echo DEBUG: Project directory: !PROJECT_DIR!
+echo DEBUG: Looking for platformio.ini at: !PROJECT_DIR!\platformio.ini
+echo DEBUG: Looking for src directory at: !PROJECT_DIR!\src
+echo.
+
+if not exist "!PROJECT_DIR!\platformio.ini" (
+    echo ERROR: platformio.ini not found in project
+    echo Expected location: !PROJECT_DIR!\platformio.ini
+    echo.
+    echo TROUBLESHOOTING:
+    echo 1. Make sure flash_tool_windows.bat is in the same folder as platformio.ini
+    echo 2. Current working directory: %CD%
+    echo 3. Available files in project directory:
+    dir "!PROJECT_DIR!" /b 2>nul
+    echo.
+    pause
+    exit /b 1
+)
+
+if not exist "!PROJECT_DIR!\src" (
+    echo ERROR: src directory not found in project
+    echo Expected location: !PROJECT_DIR!\src
+    echo.
+    echo Available directories:
+    dir "!PROJECT_DIR!" /ad /b 2>nul
+    echo.
+    pause
+    exit /b 1
+)
+
+echo Project structure verified successfully
+echo Project directory: !PROJECT_DIR!
+echo Script directory: !SCRIPT_DIR!
 exit /b 0
 
 :detect_ports
