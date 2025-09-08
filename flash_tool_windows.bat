@@ -978,19 +978,83 @@ if "!port_info!"=="" (
 if "!port_info!"=="NO_ESP32_FOUND" (
     echo No ESP32 devices detected automatically.
     echo.
-    echo MANUAL PORT SELECTION:
-    echo If you can see your ESP32 in Device Manager as COM3, you can force it:
-    echo 1. Make sure ESP32 is connected via USB
-    echo 2. Check Device Manager for COM port number
-    echo 3. Manually set port by editing this script or using:
-    echo    set SELECTED_PORT=COM3
+    echo DRIVER DIAGNOSIS AND TROUBLESHOOTING:
+    echo =====================================
+    echo.
+    echo Step 1: Check Device Manager
+    echo 1. Press Win+X and select "Device Manager"
+    echo 2. Look for your ESP32 under these sections:
+    echo    - "Ports (COM & LPT)" - Should show COM3, COM4, etc.
+    echo    - "Other devices" - May show unknown device with yellow warning
+    echo    - "Universal Serial Bus controllers"
+    echo.
+    echo Step 2: Driver Issues - Common Solutions
+    echo ESP32 uses different USB-to-Serial chips. Check which one you have:
+    echo.
+    echo A) CH340/CH341 Chip (Most Common):
+    echo    - Download driver from: http://www.wch.cn/downloads/CH341SER_EXE.html
+    echo    - Or search "CH340 driver Windows" 
+    echo    - Device shows as "USB-SERIAL CH340" or similar
+    echo.
+    echo B) CP2102/CP2104 Chip (Silicon Labs):
+    echo    - Download from: https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers
+    echo    - Device shows as "CP210x USB to UART Bridge" or similar
+    echo.
+    echo C) FT232 Chip (FTDI):
+    echo    - Usually auto-installs with Windows Update
+    echo    - Manual download: https://ftdichip.com/drivers/vcp-drivers/
+    echo.
+    echo Step 3: Physical Connection Issues
+    echo 1. Try different USB cables (some are power-only, not data)
+    echo 2. Try different USB ports (avoid USB hubs)
+    echo 3. Check ESP32 power LED is on
+    echo 4. Some boards need to hold BOOT button while connecting
+    echo.
+    echo Step 4: Windows Driver Installation
+    echo If device appears as "Unknown Device" in Device Manager:
+    echo 1. Right-click the unknown device
+    echo 2. Select "Update Driver"
+    echo 3. Choose "Browse my computer for drivers"
+    echo 4. Point to downloaded driver folder
+    echo.
+    echo Step 5: Force COM Port Assignment
+    echo If you can see a COM port in Device Manager:
+    echo 1. Note the COM number (e.g., COM3, COM4)
+    echo 2. Enter it below to force selection
     echo.
     set /p "manual_port=Enter COM port manually (e.g. COM3) or press Enter to exit: "
     if not "!manual_port!"=="" (
+        echo Testing connection to !manual_port!...
+        
+        REM Create a simple Python script to test the port
+        set "test_py=%TEMP%\test_port_%RANDOM%.py"
+        (
+        echo import serial
+        echo import time
+        echo try:
+        echo     ser = serial.Serial^('!manual_port!', 115200, timeout=1^)
+        echo     print^("SUCCESS: Port !manual_port! opened successfully"^)
+        echo     ser.close^(^)
+        echo except Exception as e:
+        echo     print^(f"ERROR: Cannot open !manual_port!: {e}"^)
+        echo     print^("This usually means:"^)
+        echo     print^("1. Driver not installed correctly"^)
+        echo     print^("2. Port is being used by another program"^)
+        echo     print^("3. ESP32 not properly connected"^)
+        ) > "!test_py!"
+        
+        %PYTHON_CMD% "!test_py!" 2>nul
+        del "!test_py!" >nul 2>&1
+        
         set "SELECTED_PORT=!manual_port!"
         echo Using manual port: !SELECTED_PORT!
         exit /b 0
     )
+    echo.
+    echo Additional Resources:
+    echo - ESP32 Setup Guide: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/establish-serial-connection.html
+    echo - Random Nerd Tutorials ESP32 Guide: https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
+    echo.
     pause
     exit /b 1
 )
