@@ -638,9 +638,32 @@ goto :end
 
 :to_upper
 set "str=!%~1!"
-for %%i in (a b c d e f g h i j k l m n o p q r s t u v w x y z) do (
-    call set "str=%%str:%%i=%%i%%"
-)
+call set "str=%%str:a=A%%"
+call set "str=%%str:b=B%%"
+call set "str=%%str:c=C%%"
+call set "str=%%str:d=D%%"
+call set "str=%%str:e=E%%"
+call set "str=%%str:f=F%%"
+call set "str=%%str:g=G%%"
+call set "str=%%str:h=H%%"
+call set "str=%%str:i=I%%"
+call set "str=%%str:j=J%%"
+call set "str=%%str:k=K%%"
+call set "str=%%str:l=L%%"
+call set "str=%%str:m=M%%"
+call set "str=%%str:n=N%%"
+call set "str=%%str:o=O%%"
+call set "str=%%str:p=P%%"
+call set "str=%%str:q=Q%%"
+call set "str=%%str:r=R%%"
+call set "str=%%str:s=S%%"
+call set "str=%%str:t=T%%"
+call set "str=%%str:u=U%%"
+call set "str=%%str:v=V%%"
+call set "str=%%str:w=W%%"
+call set "str=%%str:x=X%%"
+call set "str=%%str:y=Y%%"
+call set "str=%%str:z=Z%%"
 set "%~1=!str!"
 goto :eof
 
@@ -658,9 +681,18 @@ goto :count_chars
 if !len! lss 3 exit /b 1
 if !len! gtr 20 exit /b 1
 
-REM Check for basic validity (simplified)
-echo !channel! | findstr /r "^[A-Za-z0-9_]*$" >nul
-if errorlevel 1 exit /b 1
+REM Simple character validation - accept if no obvious invalid chars found
+REM Most common invalid characters that would cause issues
+echo !channel! | findstr " " >nul && exit /b 1
+echo !channel! | findstr "	" >nul && exit /b 1
+echo !channel! | findstr "/" >nul && exit /b 1
+echo !channel! | findstr "\" >nul && exit /b 1
+echo !channel! | findstr ":" >nul && exit /b 1
+echo !channel! | findstr "*" >nul && exit /b 1
+echo !channel! | findstr "?" >nul && exit /b 1
+echo !channel! | findstr "<" >nul && exit /b 1
+echo !channel! | findstr ">" >nul && exit /b 1
+echo !channel! | findstr "|" >nul && exit /b 1
 
 REM Check reserved names
 call :to_upper channel
