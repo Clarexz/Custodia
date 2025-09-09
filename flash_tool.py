@@ -388,6 +388,8 @@ def integrated_serial_monitor(port):
         # Detect operating system and launch appropriate terminal
         system = platform.system().lower()
         
+        cmd = None  # Initialize cmd variable
+        
         if system == "darwin":  # macOS
             # Use Terminal.app to open new window
             cmd = [
@@ -582,7 +584,7 @@ def main():
         print("Manual configuration required:")
         print(f"1. Connect to device manually")
         print(f"2. Send: NETWORK_CREATE {args.channel.upper()} {args.password.upper()}")
-        print(f"3. Send: Q_CONFIG {args.role},{args.id},{args.interval},{args.region},{args.mode},{args.radio},{args.hops}")
+        print(f"3. Send: Q_CONFIG {args.role.upper()},{args.id},{args.interval},{args.region.upper()},{args.mode.upper()},{args.radio.upper()},{args.hops}")
         print("4. Send: CONFIG_SAVE")
         print("5. Send: START")
         sys.exit(1)
@@ -590,9 +592,15 @@ def main():
     print(f"Using configuration port: {port}")
     
     # Build configuration commands
-    config_cmd_q = f"Q_CONFIG {args.role},{args.id},{args.interval},{args.region},{args.mode},{args.radio},{args.hops}"
-    config_cmd_alt = f"CONFIG {args.role},{args.id},{args.interval},{args.region},{args.mode},{args.radio},{args.hops}"
+    config_cmd_q = f"Q_CONFIG {args.role.upper()},{args.id},{args.interval},{args.region.upper()},{args.mode.upper()},{args.radio.upper()},{args.hops}"
+    config_cmd_alt = f"CONFIG {args.role.upper()},{args.id},{args.interval},{args.region.upper()},{args.mode.upper()},{args.radio.upper()},{args.hops}"
     network_cmd = f"NETWORK_CREATE {args.channel.upper()} {args.password.upper()}"
+    
+    # Debug output - show what commands will be sent
+    print(f"DEBUG: Commands to be sent:")
+    print(f"  Network: {network_cmd}")
+    print(f"  Config: {config_cmd_q}")
+    print(f"  Role value: '{args.role.upper()}'")
     
     # Send configuration with proper timing and error handling
     try:

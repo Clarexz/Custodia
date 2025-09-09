@@ -731,12 +731,35 @@ if "%input%"=="" (
 
 REM Function to convert to uppercase
 :to_upper
-set "str=%1"
-set "result="
-for /f "delims=" %%i in ('cmd /c "echo %str%"') do (
-    set "result=%%i"
-)
-set "%1=%result%"
+setlocal enabledelayedexpansion
+set "str=!%1!"
+set "str=!str:a=A!"
+set "str=!str:b=B!"
+set "str=!str:c=C!"
+set "str=!str:d=D!"
+set "str=!str:e=E!"
+set "str=!str:f=F!"
+set "str=!str:g=G!"
+set "str=!str:h=H!"
+set "str=!str:i=I!"
+set "str=!str:j=J!"
+set "str=!str:k=K!"
+set "str=!str:l=L!"
+set "str=!str:m=M!"
+set "str=!str:n=N!"
+set "str=!str:o=O!"
+set "str=!str:p=P!"
+set "str=!str:q=Q!"
+set "str=!str:r=R!"
+set "str=!str:s=S!"
+set "str=!str:t=T!"
+set "str=!str:u=U!"
+set "str=!str:v=V!"
+set "str=!str:w=W!"
+set "str=!str:x=X!"
+set "str=!str:y=Y!"
+set "str=!str:z=Z!"
+endlocal & set "%1=%str%"
 goto :eof
 
 REM Function to calculate network hash
@@ -897,6 +920,12 @@ if "%RADIO%"=="CUSTOM_ADVANCED" (
 )
 
 set "config_cmd_alt=CONFIG %ROLE%,%DEVICE_ID%,%INTERVAL%,%REGION%,%MODE%,%RADIO%,%HOPS%"
+
+REM Debug output - show what commands will be sent
+call :print_color %BLUE% "DEBUG: Commands to be sent:"
+call :print_color %BLUE% "  Network: %network_cmd%"
+call :print_color %BLUE% "  Config: %config_cmd%"
+call :print_color %BLUE% "  Role value: '%ROLE%'"
 
 REM Create Python script for serial communication
 set "SERIAL_SCRIPT=%TEMP%\configure_device.py"
@@ -2247,12 +2276,35 @@ if "%input%"=="" (
 
 REM Function to convert to uppercase
 :to_upper
-set "str=%1"
-set "result="
-for /f "delims=" %%i in ('cmd /c "echo %str%"') do (
-    set "result=%%i"
-)
-set "%1=%result%"
+setlocal enabledelayedexpansion
+set "str=!%1!"
+set "str=!str:a=A!"
+set "str=!str:b=B!"
+set "str=!str:c=C!"
+set "str=!str:d=D!"
+set "str=!str:e=E!"
+set "str=!str:f=F!"
+set "str=!str:g=G!"
+set "str=!str:h=H!"
+set "str=!str:i=I!"
+set "str=!str:j=J!"
+set "str=!str:k=K!"
+set "str=!str:l=L!"
+set "str=!str:m=M!"
+set "str=!str:n=N!"
+set "str=!str:o=O!"
+set "str=!str:p=P!"
+set "str=!str:q=Q!"
+set "str=!str:r=R!"
+set "str=!str:s=S!"
+set "str=!str:t=T!"
+set "str=!str:u=U!"
+set "str=!str:v=V!"
+set "str=!str:w=W!"
+set "str=!str:x=X!"
+set "str=!str:y=Y!"
+set "str=!str:z=Z!"
+endlocal & set "%1=%str%"
 goto :eof
 
 REM Function to calculate network hash
@@ -2413,6 +2465,12 @@ if "%RADIO%"=="CUSTOM_ADVANCED" (
 )
 
 set "config_cmd_alt=CONFIG %ROLE%,%DEVICE_ID%,%INTERVAL%,%REGION%,%MODE%,%RADIO%,%HOPS%"
+
+REM Debug output - show what commands will be sent
+call :print_color %BLUE% "DEBUG: Commands to be sent:"
+call :print_color %BLUE% "  Network: %network_cmd%"
+call :print_color %BLUE% "  Config: %config_cmd%"
+call :print_color %BLUE% "  Role value: '%ROLE%'"
 
 REM Create Python script for serial communication
 set "SERIAL_SCRIPT=%TEMP%\configure_device.py"
@@ -3288,12 +3346,35 @@ if "%input%"=="" (
 
 REM Function to convert to uppercase
 :to_upper
-set "str=%1"
-set "result="
-for /f "delims=" %%i in ('cmd /c "echo %str%"') do (
-    set "result=%%i"
-)
-set "%1=%result%"
+setlocal enabledelayedexpansion
+set "str=!%1!"
+set "str=!str:a=A!"
+set "str=!str:b=B!"
+set "str=!str:c=C!"
+set "str=!str:d=D!"
+set "str=!str:e=E!"
+set "str=!str:f=F!"
+set "str=!str:g=G!"
+set "str=!str:h=H!"
+set "str=!str:i=I!"
+set "str=!str:j=J!"
+set "str=!str:k=K!"
+set "str=!str:l=L!"
+set "str=!str:m=M!"
+set "str=!str:n=N!"
+set "str=!str:o=O!"
+set "str=!str:p=P!"
+set "str=!str:q=Q!"
+set "str=!str:r=R!"
+set "str=!str:s=S!"
+set "str=!str:t=T!"
+set "str=!str:u=U!"
+set "str=!str:v=V!"
+set "str=!str:w=W!"
+set "str=!str:x=X!"
+set "str=!str:y=Y!"
+set "str=!str:z=Z!"
+endlocal & set "%1=%str%"
 goto :eof
 setlocal enabledelayedexpansion
 
