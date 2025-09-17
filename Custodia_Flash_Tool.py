@@ -11,7 +11,9 @@ import argparse
 import os
 import platform
 import re
+import shlex
 import shutil
+import site
 import subprocess
 import sys
 import tempfile
@@ -135,6 +137,27 @@ def get_paths() -> tuple[Path, Path]:
     return script_dir, project_dir
 
 
+def format_command(parts: Sequence[str]) -> str:
+    """Return an OS-appropriate string representation of a command."""
+    if not parts:
+        return ""
+
+    if os.name == "nt":
+        def quote_windows(arg: str) -> str:
+            value = str(arg)
+            if not value:
+                return '""'
+            needs_quotes = any(char in value for char in " 	&|^<>")
+            value = value.replace('"', r'\"')
+            if needs_quotes or value.startswith('"') or value.endswith('"'):
+                return f'"{value}"'
+            return value
+
+        return " ".join(quote_windows(item) for item in parts)
+
+    return " ".join(shlex.quote(str(item)) for item in parts)
+
+
 # ---------------------------------------------------------------------------
 # Dependency management and environment detection
 # ---------------------------------------------------------------------------
@@ -171,21 +194,60 @@ def ensure_pyserial() -> "module":
 
 def find_platformio() -> Optional[str]:
     """Locate a working PlatformIO executable similar to the macOS script."""
-    candidate = shutil.which("pio")
-    if candidate and _pio_works(candidate):
-        return candidate
+    names = ['pio', 'platformio']
+    for name in names:
+        candidate = shutil.which(name)
+        if candidate and _pio_works(candidate):
+            return candidate
 
     home = Path.home()
-    candidates = [
-        home / ".local" / "bin" / "pio",
-        home / ".platformio" / "penv" / "bin" / "pio",
-        Path("/usr/local/bin/pio"),
-        Path("/opt/homebrew/bin/pio"),
-    ]
-    for item in candidates:
-        if item.exists() and _pio_works(str(item)):
-            return str(item)
+    candidates: List[Path] = []
+    if os.name == 'nt':
+        user_profile = Path(os.environ.get('USERPROFILE', str(home)))
+        candidates.extend([
+            user_profile / '.platformio' / 'penv' / 'Scripts' / 'pio.exe',
+            user_profile / '.platformio' / 'penv' / 'Scripts' / 'platformio.exe',
+        ])
+        try:
+            user_base = Path(site.getuserbase())
+        except Exception:
+            user_base = user_profile / 'AppData' / 'Roaming' / 'Python'
+        candidates.extend([
+            user_base / 'Scripts' / 'pio.exe',
+            user_base / 'Scripts' / 'platformio.exe',
+        ])
+        python_dir = Path(sys.executable).resolve().parent
+        candidates.extend([
+            python_dir / 'pio.exe',
+            python_dir / 'platformio.exe',
+            python_dir / 'Scripts' / 'pio.exe',
+            python_dir / 'Scripts' / 'platformio.exe',
+            python_dir.parent / 'Scripts' / 'pio.exe',
+            python_dir.parent / 'Scripts' / 'platformio.exe',
+        ])
+    else:
+        candidates.extend([
+            home / '.local' / 'bin' / 'pio',
+            home / '.local' / 'bin' / 'platformio',
+            home / '.platformio' / 'penv' / 'bin' / 'pio',
+            home / '.platformio' / 'penv' / 'bin' / 'platformio',
+            Path('/usr/local/bin/pio'),
+            Path('/usr/local/bin/platformio'),
+            Path('/opt/homebrew/bin/pio'),
+            Path('/opt/homebrew/bin/platformio'),
+        ])
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        candidate_str = str(candidate)
+        if candidate_str in seen:
+            continue
+        seen.add(candidate_str)
+        if candidate.exists() and _pio_works(candidate_str):
+            return candidate_str
     return None
+
+
 
 
 def _pio_works(executable: str) -> bool:
@@ -227,9 +289,22 @@ def ensure_platformio() -> str:
 
     pio_cmd = find_platformio()
     if not pio_cmd:
+        if os.name == "nt":
+            user_profile = Path(os.environ.get("USERPROFILE", str(Path.home())))
+            hint_candidates = [
+                user_profile / ".platformio" / "penv" / "Scripts",
+            ]
+            try:
+                hint_candidates.append(Path(site.getuserbase()) / "Scripts")
+            except Exception:
+                appdata = Path(os.environ.get("APPDATA", user_profile / "AppData" / "Roaming"))
+                hint_candidates.append(appdata / "Python" / "Scripts")
+            hint = " or ".join(dict.fromkeys(str(candidate) for candidate in hint_candidates))
+        else:
+            hint = "~/.local/bin or ~/.platformio/penv/bin"
         raise FlashToolError(
             "PlatformIO installation completed but executable not found. "
-            "Add ~/.local/bin or ~/.platformio/penv/bin to PATH and retry."
+            f"Add {hint} to PATH and retry."
         )
 
     print_color(GREEN, f"PlatformIO ready: {pio_cmd}")
@@ -597,7 +672,21 @@ def print_manual_verification(config: FlashConfig) -> None:
 
 
 def launch_monitor(config: FlashConfig, project_dir: Path) -> None:
-    monitor_cmd = f"{config.pio_cmd} device monitor --baud 115200 --port {config.port}"
+    if not config.pio_cmd:
+        raise FlashToolError("PlatformIO executable not resolved; monitor launch aborted.")
+
+    monitor_args: List[str] = [
+        config.pio_cmd,
+        "device",
+        "monitor",
+        "--baud",
+        "115200",
+    ]
+    if config.port:
+        monitor_args.extend(["--port", config.port])
+
+    monitor_cmd = format_command(monitor_args)
+
     print_color(YELLOW, "\nLaunching serial monitor...")
 
     system = platform.system()
@@ -635,9 +724,45 @@ def launch_monitor(config: FlashConfig, project_dir: Path) -> None:
                 script_path.unlink(missing_ok=True)
             except OSError:
                 pass
+    elif system == "Windows":
+        script_path: Optional[Path] = None
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".cmd") as script:
+            script_path = Path(script.name)
+            script.write("@echo off\r\n")
+            script.write("setlocal enableextensions\r\n")
+            script.write(f"cd /d \"{project_dir}\"\r\n")
+            script.write("title Custodia Device Monitor\r\n")
+            script.write("echo Custodia Device Monitor\r\n")
+            script.write("echo ======================\r\n")
+            script.write(f"echo Port: {config.port or '(auto)'}\r\n")
+            script.write(f"echo PlatformIO: {config.pio_cmd}\r\n")
+            script.write("echo.\r\n")
+            script.write("set \"PATH=%PATH%;%USERPROFILE%\\.platformio\\penv\\Scripts;%APPDATA%\\Python\\Scripts\"\r\n")
+            script.write(monitor_cmd + "\r\n")
+            script.write("echo.\r\n")
+            script.write("echo Monitor session ended. Press any key to close...\r\n")
+            script.write("pause >nul\r\n")
+            script.write("endlocal\r\n")
+            script.write("del \"%~f0\"\r\n")
+        try:
+            if script_path is not None:
+                os.startfile(str(script_path))  # type: ignore[attr-defined]
+                print_color(GREEN, "Monitor window opened in Command Prompt.")
+            else:
+                raise OSError("Temporary script path unavailable.")
+        except OSError as exc:
+            print_color(YELLOW, f"Could not launch Command Prompt automatically: {exc}")
+            print_color(YELLOW, f"Run manually: {monitor_cmd}")
+            if script_path is not None:
+                try:
+                    script_path.unlink()
+                except OSError:
+                    pass
     else:
-        print_color(YELLOW, "Automatic monitor launch is only implemented for macOS.")
+        print_color(YELLOW, "Automatic monitor launch is not implemented for this platform.")
         print_color(YELLOW, f"Run manually: {monitor_cmd}")
+
+
 
 
 def show_final_summary(config: FlashConfig) -> None:
