@@ -17,7 +17,7 @@ RadioProfileManager radioProfileManager;
 /*
  * CONFIGURACIONES PREDEFINIDAS
  */
-static const RadioProfileConfig PREDEFINED_PROFILES[] = {
+static const RadioProfileConfig PREDEFINED_PROFILES[PROFILE_COUNT] = {
     // DESERT_LONG_FAST
     {
         PROFILE_DESERT_LONG_FAST,
@@ -86,6 +86,118 @@ static const RadioProfileConfig PREDEFINED_PROFILES[] = {
         7,      // Se recalcula según configuración
         "Expert configuration, specific requirements, fine-tuning",
         "Control total de parámetros | Requiere conocimiento técnico"
+    },
+
+    // SHORT_TURBO
+    {
+        PROFILE_SHORT_TURBO,
+        "SHORT_TURBO",
+        "Máxima velocidad con alcance muy corto (modo turbo)",
+        SHORT_TURBO_SF, SHORT_TURBO_BW, SHORT_TURBO_CR, SHORT_TURBO_POWER, SHORT_TURBO_PREAMBLE,
+        600,    // ~0.6km alcance estimado
+        40,     // ~40ms airtime
+        9,      // Rating batería (muy eficiente por airtime corto)
+        10,     // Rating velocidad (máxima)
+        "Pruebas de laboratorio, enlaces experimentales, enlaces cercanos",
+        "Velocidad extrema | Alcance mínimo, restricciones regulatorias (500kHz)"
+    },
+
+    // SHORT_FAST
+    {
+        PROFILE_SHORT_FAST,
+        "SHORT_FAST",
+        "Alta velocidad para redes urbanas densas",
+        SHORT_FAST_SF, SHORT_FAST_BW, SHORT_FAST_CR, SHORT_FAST_POWER, SHORT_FAST_PREAMBLE,
+        900,    // ~0.9km alcance estimado
+        60,     // ~60ms airtime
+        8,      // Rating batería (eficiente)
+        9,      // Rating velocidad (muy alta)
+        "Redes urbanas densas, despliegues con muchos nodos cercanos",
+        "Velocidad alta y baja latencia | Alcance limitado"
+    },
+
+    // SHORT_SLOW
+    {
+        PROFILE_SHORT_SLOW,
+        "SHORT_SLOW",
+        "Velocidad moderada con alcance corto-medio",
+        SHORT_SLOW_SF, SHORT_SLOW_BW, SHORT_SLOW_CR, SHORT_SLOW_POWER, SHORT_SLOW_PREAMBLE,
+        1200,   // ~1.2km alcance estimado
+        110,    // ~110ms airtime
+        7,      // Rating batería
+        8,      // Rating velocidad
+        "Barrios densos, balance entre velocidad y cobertura",
+        "Balance rápido vs alcance | Aún orientado a distancias cortas"
+    },
+
+    // MEDIUM_FAST
+    {
+        PROFILE_MEDIUM_FAST,
+        "MEDIUM_FAST",
+        "Balance óptimo entre velocidad y alcance",
+        MEDIUM_FAST_SF, MEDIUM_FAST_BW, MEDIUM_FAST_CR, MEDIUM_FAST_POWER, MEDIUM_FAST_PREAMBLE,
+        1800,   // ~1.8km alcance estimado
+        180,    // ~180ms airtime
+        7,      // Rating batería
+        7,      // Rating velocidad
+        "Redes suburbanas, nodos móviles, enlaces de propósito general",
+        "Balance general | Sin extremos de alcance o velocidad"
+    },
+
+    // MEDIUM_SLOW
+    {
+        PROFILE_MEDIUM_SLOW,
+        "MEDIUM_SLOW",
+        "Alcance moderado con velocidad controlada",
+        MEDIUM_SLOW_SF, MEDIUM_SLOW_BW, MEDIUM_SLOW_CR, MEDIUM_SLOW_POWER, MEDIUM_SLOW_PREAMBLE,
+        2200,   // ~2.2km alcance estimado
+        260,    // ~260ms airtime
+        6,      // Rating batería
+        6,      // Rating velocidad
+        "Redes suburbanas en expansión, repetidores intermedios",
+        "Mayor alcance | Tiempo en aire moderado"
+    },
+
+    // LONG_FAST
+    {
+        PROFILE_LONG_FAST,
+        "LONG_FAST",
+        "Perfil Meshtastic por defecto (largo alcance rápido)",
+        LONG_FAST_SF, LONG_FAST_BW, LONG_FAST_CR, LONG_FAST_POWER, LONG_FAST_PREAMBLE,
+        2600,   // ~2.6km alcance estimado
+        400,    // ~0.4s airtime
+        5,      // Rating batería
+        5,      // Rating velocidad
+        "Uso general, redes mixtas, enlaces balanceados",
+        "Buen alcance con velocidad moderada | Airtime intermedio"
+    },
+
+    // LONG_MODERATE
+    {
+        PROFILE_LONG_MODERATE,
+        "LONG_MODERATE",
+        "Alcance extendido con velocidad moderada-baja",
+        LONG_MODERATE_SF, LONG_MODERATE_BW, LONG_MODERATE_CR, LONG_MODERATE_POWER, LONG_MODERATE_PREAMBLE,
+        3200,   // ~3.2km alcance estimado
+        650,    // ~0.65s airtime
+        4,      // Rating batería
+        4,      // Rating velocidad
+        "Conexiones rurales, enlaces de media-larga distancia",
+        "Mayor alcance y robustez | Airtime elevado"
+    },
+
+    // LONG_SLOW
+    {
+        PROFILE_LONG_SLOW,
+        "LONG_SLOW",
+        "Máximo alcance con velocidad mínima",
+        LONG_SLOW_SF, LONG_SLOW_BW, LONG_SLOW_CR, LONG_SLOW_POWER, LONG_SLOW_PREAMBLE,
+        4500,   // ~4.5km alcance estimado
+        1100,   // ~1.1s airtime
+        3,      // Rating batería
+        3,      // Rating velocidad
+        "Emergencias de larga distancia, sensores remotos, enlaces críticos",
+        "Máxima sensibilidad y alcance | Tiempo en aire muy alto"
     }
 };
 
@@ -105,7 +217,7 @@ RadioProfileConfig RadioProfileManager::getProfileConfig(RadioProfile profile) {
         return customConfig; // Retornar configuración personalizada
     }
     
-    if (profile >= 0 && profile < 5) {
+    if (profile >= 0 && profile < PROFILE_COUNT) {
         return PREDEFINED_PROFILES[profile];
     }
     
@@ -217,6 +329,87 @@ bool RadioProfileManager::setCustomParameter(const String& param, float value) {
     }
 }
 
+bool RadioProfileManager::tryParseProfile(const String& value, RadioProfile& profile) {
+    String normalized = value;
+    normalized.trim();
+    normalized.toUpperCase();
+    normalized.replace(' ', '_');
+    normalized.replace('-', '_');
+
+    if (normalized == "DESERT_LONG_FAST" || normalized == "DESERT") {
+        profile = PROFILE_DESERT_LONG_FAST;
+        return true;
+    }
+    if (normalized == "MOUNTAIN_STABLE" || normalized == "MOUNTAIN") {
+        profile = PROFILE_MOUNTAIN_STABLE;
+        return true;
+    }
+    if (normalized == "URBAN_DENSE" || normalized == "URBAN") {
+        profile = PROFILE_URBAN_DENSE;
+        return true;
+    }
+    if (normalized == "MESH_MAX_NODES" || normalized == "MESH") {
+        profile = PROFILE_MESH_MAX_NODES;
+        return true;
+    }
+    if (normalized == "CUSTOM_ADVANCED" || normalized == "CUSTOM") {
+        profile = PROFILE_CUSTOM_ADVANCED;
+        return true;
+    }
+    if (normalized == "SHORT_TURBO") {
+        profile = PROFILE_SHORT_TURBO;
+        return true;
+    }
+    if (normalized == "SHORT_FAST") {
+        profile = PROFILE_SHORT_FAST;
+        return true;
+    }
+    if (normalized == "SHORT_SLOW") {
+        profile = PROFILE_SHORT_SLOW;
+        return true;
+    }
+    if (normalized == "MEDIUM_FAST") {
+        profile = PROFILE_MEDIUM_FAST;
+        return true;
+    }
+    if (normalized == "MEDIUM_SLOW") {
+        profile = PROFILE_MEDIUM_SLOW;
+        return true;
+    }
+    if (normalized == "LONG_FAST") {
+        profile = PROFILE_LONG_FAST;
+        return true;
+    }
+    if (normalized == "LONG_MODERATE") {
+        profile = PROFILE_LONG_MODERATE;
+        return true;
+    }
+    if (normalized == "LONG_SLOW") {
+        profile = PROFILE_LONG_SLOW;
+        return true;
+    }
+
+    return false;
+}
+
+bool RadioProfileManager::isSupportedProfile(uint8_t profile) const {
+    return profile < PROFILE_COUNT;
+}
+
+String RadioProfileManager::getProfileOptionsList(bool includeCustom) const {
+    String options = "";
+    for (int i = 0; i < PROFILE_COUNT; i++) {
+        if (!includeCustom && i == PROFILE_CUSTOM_ADVANCED) {
+            continue;
+        }
+        if (options.length() > 0) {
+            options += ", ";
+        }
+        options += PREDEFINED_PROFILES[i].name;
+    }
+    return options;
+}
+
 /*
  * CÁLCULOS Y ESTIMACIONES
  */
@@ -259,8 +452,6 @@ uint8_t RadioProfileManager::calculateBatteryRating(RadioProfile profile) {
 }
 
 uint8_t RadioProfileManager::calculateSpeedRating(RadioProfile profile) {
-    RadioProfileConfig config = getProfileConfig(profile);
-    
     // Rating basado en airtime (menos airtime = mejor velocidad)
     uint16_t airtime = calculateAirtime(profile);
     float speedScore = 1.0f - ((float)(airtime - MIN_AIRTIME_MS) / (MAX_AIRTIME_MS - MIN_AIRTIME_MS));
@@ -272,35 +463,14 @@ uint8_t RadioProfileManager::calculateSpeedRating(RadioProfile profile) {
  */
 
 void RadioProfileManager::printProfileInfo(RadioProfile profile) {
-    RadioProfileConfig config = getProfileConfig(profile);
-    
-    Serial.println("\n========== RADIO PROFILE INFO ==========");
-    Serial.println("Perfil: " + String(config.name));
-    Serial.println("Descripción: " + String(config.description));
-    Serial.println();
-    Serial.println("=== PARÁMETROS TÉCNICOS ===");
-    Serial.println("Spreading Factor: SF" + String(config.spreadingFactor));
-    Serial.println("Bandwidth: " + String(config.bandwidth) + " kHz");
-    Serial.println("Coding Rate: 4/" + String(config.codingRate));
-    Serial.println("TX Power: " + String(config.txPower) + " dBm");
-    Serial.println("Preamble: " + String(config.preambleLength) + " símbolos");
-    Serial.println();
-    Serial.println("=== PERFORMANCE ESTIMADO ===");
-    Serial.println("Alcance aproximado: " + String(config.approxRange) + " metros");
-    Serial.println("Airtime (44 bytes): " + String(config.airtimeMs) + " ms");
-    Serial.println("Rating batería: " + String(config.batteryRating) + "/10");
-    Serial.println("Rating velocidad: " + String(config.speedRating) + "/10");
-    Serial.println();
-    Serial.println("=== CASO DE USO ===");
-    Serial.println("Aplicaciones: " + String(config.useCase));
-    Serial.println("Trade-offs: " + String(config.tradeOffs));
-    Serial.println("======================================\n");
+    (void)profile;
+    // No-op: mantenemos la firma por compatibilidad con comandos antiguos.
 }
 
 void RadioProfileManager::printAllProfiles() {
     Serial.println("\n============ PERFILES DISPONIBLES ============");
     
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < PROFILE_COUNT; i++) {
         RadioProfileConfig config = PREDEFINED_PROFILES[i];
         String current = (i == currentProfile) ? " [ACTUAL]" : "";
         
@@ -321,7 +491,7 @@ void RadioProfileManager::printProfileComparison() {
     Serial.println("Perfil               | SF | BW  | Pow | Alcance | Airtime | Bat | Vel");
     Serial.println("---------------------|----|----|-----|---------|---------|-----|----");
     
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < PROFILE_COUNT; i++) {
         RadioProfileConfig config = PREDEFINED_PROFILES[i];
         String name = String(config.name);
         name = name.substring(0, 19); // Truncar a 19 chars

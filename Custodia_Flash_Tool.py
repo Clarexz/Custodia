@@ -20,7 +20,7 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 # Terminal color codes to mirror the macOS shell script output style
 RED = "\033[0;31m"
@@ -34,13 +34,23 @@ RESET = "\033[0m"
 VALID_ROLES = ["TRACKER", "RECEIVER", "REPEATER"]
 VALID_REGIONS = ["US", "EU", "CH", "AS", "JP"]
 VALID_MODES = ["SIMPLE", "ADMIN"]
-VALID_RADIOS = [
-    "DESERT_LONG_FAST",
-    "MOUNTAIN_STABLE",
-    "URBAN_DENSE",
-    "MESH_MAX_NODES",
-    "CUSTOM_ADVANCED",
+RADIO_PROFILE_OPTIONS: List[Tuple[str, str]] = [
+    ("DESERT_LONG_FAST", "Campo abierto, máximo alcance"),
+    ("MOUNTAIN_STABLE", "Terreno con obstáculos, alta robustez"),
+    ("URBAN_DENSE", "Alta velocidad para entornos densos"),
+    ("MESH_MAX_NODES", "Balance para meshes de 20-30 nodos"),
+    ("SHORT_TURBO", "Turbo 500kHz, alcance mínimo (experimental)"),
+    ("SHORT_FAST", "Alta velocidad, alcance corto"),
+    ("SHORT_SLOW", "Velocidad media-alta, corto/medio alcance"),
+    ("MEDIUM_FAST", "Balance óptimo velocidad/alcance"),
+    ("MEDIUM_SLOW", "Alcance moderado, airtime medio"),
+    ("LONG_FAST", "Perfil Meshtastic por defecto"),
+    ("LONG_MODERATE", "Alcance extendido, velocidad moderada"),
+    ("LONG_SLOW", "Máximo alcance, mayor airtime"),
+    ("CUSTOM_ADVANCED", "Configuración manual (expertos)"),
 ]
+
+VALID_RADIOS = [name for name, _ in RADIO_PROFILE_OPTIONS]
 RESERVED_CHANNELS = {
     "CONFIG",
     "ADMIN",
@@ -124,6 +134,70 @@ def print_header() -> None:
     print_color(BLUE, "        Python Interactive CLI   ")
     print_color(BLUE, "==================================")
     print()
+
+
+# ---------------------------------------------------------------------------
+# macOS integration helpers
+# ---------------------------------------------------------------------------
+
+def _escape_applescript(text: str) -> str:
+    """Escape characters that would break a double-quoted AppleScript string."""
+    return text.replace("\\", "\\\\").replace('"', '\\\"')
+
+
+def ensure_terminal_session(argv: Optional[List[str]]) -> None:
+    """Relaunch the frozen macOS app inside Terminal when no TTY is attached."""
+
+    if platform.system() != "Darwin":
+        return
+
+    if os.environ.get("CUSTODIA_TTY_BOOTSTRAPPED") == "1":
+        return
+
+    if argv is not None:
+        # When invoked programmatically (tests), do not attempt a relaunch.
+        return
+
+    stdin = sys.stdin
+    if stdin is not None and stdin.isatty():
+        return
+
+    if not getattr(sys, "frozen", False):
+        # Running from source, rely on the developer launching via Terminal.
+        return
+
+    executable = Path(sys.executable).resolve()
+    args = " ".join(shlex.quote(arg) for arg in sys.argv[1:])
+
+    shell_command = f"export CUSTODIA_TTY_BOOTSTRAPPED=1; {shlex.quote(str(executable))}"
+    if args:
+        shell_command = f"{shell_command} {args}"
+
+    apple_script = (
+        "tell application \"Terminal\"\n"
+        "    activate\n"
+        f"    do script \"{_escape_applescript(shell_command)}\"\n"
+        "end tell"
+    )
+
+    try:
+        subprocess.Popen(
+            ["/usr/bin/osascript", "-e", apple_script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        # Fall back to a blocking alert so the user understands what happened.
+        fallback_message = (
+            "display alert \"Custodia Flash Tool\" "
+            "message \"No se pudo abrir una ventana de Terminal. "
+            "Ejecuta el archivo desde Terminal manualmente.\" as warning"
+        )
+        subprocess.call(["/usr/bin/osascript", "-e", fallback_message])
+    finally:
+        # Terminate the current process; a fresh instance continues in the Terminal.
+        time.sleep(0.5)
+        sys.exit(0)
 
 
 # ---------------------------------------------------------------------------
@@ -920,13 +994,14 @@ def collect_mode() -> str:
 def collect_radio(config: FlashConfig) -> str:
     print_color(BLUE, "Radio Profile:")
     display = [
-        (PURPLE, "  1. DESERT_LONG_FAST"),
-        (PURPLE, "  2. MOUNTAIN_STABLE"),
-        (PURPLE, "  3. URBAN_DENSE"),
-        (PURPLE, "  4. MESH_MAX_NODES"),
-        (PURPLE, "  5. CUSTOM_ADVANCED"),
+        (PURPLE, f"  {idx}. {name} - {description}")
+        for idx, (name, description) in enumerate(RADIO_PROFILE_OPTIONS, start=1)
     ]
-    choice = ensure_choice("Select radio [1-5]:", VALID_RADIOS, display)
+    choice = ensure_choice(
+        f"Select radio [1-{len(VALID_RADIOS)}]:",
+        VALID_RADIOS,
+        display,
+    )
     if choice == "CUSTOM_ADVANCED":
         config.custom_params = collect_custom_params()
     return choice
@@ -1085,7 +1160,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("-interval", "--interval", dest="interval", type=int)
     parser.add_argument("-region", "--region", dest="region")
     parser.add_argument("-mode", "--mode", dest="mode")
-    parser.add_argument("-radio", "--radio", dest="radio")
+    parser.add_argument(
+        "-radio",
+        "--radio",
+        dest="radio",
+        help="Radio profile (see README.md or interactive mode for full list)",
+    )
     parser.add_argument("-hops", "--hops", dest="hops", type=int, default=3)
     parser.add_argument("-channel", "--channel", dest="channel")
     parser.add_argument("-password", "--password", dest="password")
@@ -1101,7 +1181,12 @@ def build_command_parser() -> argparse.ArgumentParser:
     parser.add_argument("-interval", "--interval", dest="interval", type=int)
     parser.add_argument("-region", "--region", dest="region")
     parser.add_argument("-mode", "--mode", dest="mode")
-    parser.add_argument("-radio", "--radio", dest="radio")
+    parser.add_argument(
+        "-radio",
+        "--radio",
+        dest="radio",
+        help="Radio profile (see README.md or interactive mode for full list)",
+    )
     parser.add_argument("-hops", "--hops", dest="hops", type=int, default=3)
     parser.add_argument("-channel", "--channel", dest="channel")
     parser.add_argument("-password", "--password", dest="password")
@@ -1189,6 +1274,7 @@ def summarize_config(config: FlashConfig) -> None:
 # ---------------------------------------------------------------------------
 
 def main(argv: Optional[List[str]] = None) -> int:
+    ensure_terminal_session(argv)
     print_header()
     parser = build_arg_parser()
     args = parser.parse_args(argv)

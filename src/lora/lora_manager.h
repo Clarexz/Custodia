@@ -26,6 +26,8 @@ private:
     uint16_t deviceID;
     uint32_t packetCounter;
     uint8_t receiveBuffer[256];
+    String lastSimplePacket;
+    bool simplePacketPending;
     
     // === COMPONENTES MESHTASTIC ===
     std::vector<PacketRecord> recentBroadcasts;
@@ -91,6 +93,7 @@ public:
     bool isPacketAvailable();
     bool receivePacket(LoRaPacket* packet);
     bool processGPSPacket(const LoRaPacket* packet, float* lat, float* lon, uint32_t* timestamp, uint16_t* sourceID);
+    bool fetchSimplePacket(String& out);
     
     /*
      * MÉTODOS DE MESH

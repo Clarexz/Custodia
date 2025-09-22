@@ -186,7 +186,13 @@ bool LoRaManager::processRemoteConfigCommand(const LoRaPacket* packet) {
             
             delay(100);  // Dar tiempo para transmitir
             Serial.println("[CONFIG] Reiniciando por comando remoto...");
+#if defined(ARDUINO_ARCH_ESP32)
             ESP.restart();
+#elif defined(NRF52_SERIES)
+            NVIC_SystemReset();
+#else
+            Serial.println("[WARN] Reinicio no soportado en esta plataforma.");
+#endif
             return true;  // No llegar aquí
         }
         

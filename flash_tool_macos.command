@@ -13,6 +13,28 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+RADIO_PROFILE_OPTIONS=(
+    "DESERT_LONG_FAST|Long range, fast transmission"
+    "MOUNTAIN_STABLE|Stable links in harsh terrain"
+    "URBAN_DENSE|High throughput for dense networks"
+    "MESH_MAX_NODES|Balanced mesh for 20-30 nodes"
+    "SHORT_TURBO|Ultra-fast 500kHz (check regional legality)"
+    "SHORT_FAST|High speed, short range"
+    "SHORT_SLOW|Moderate speed, short/medium range"
+    "MEDIUM_FAST|Balanced speed and reach"
+    "MEDIUM_SLOW|Extended reach, moderate airtime"
+    "LONG_FAST|Meshtastic default balance"
+    "LONG_MODERATE|Extended reach, lower speed"
+    "LONG_SLOW|Maximum reach, highest airtime"
+    "CUSTOM_ADVANCED|Manual expert configuration"
+)
+
+RADIO_NAMES=()
+for entry in "${RADIO_PROFILE_OPTIONS[@]}"; do
+    RADIO_NAMES+=("${entry%%|*}")
+done
+RADIO_NAMES_JOINED=$(IFS='|'; echo "${RADIO_NAMES[*]}")
+
 print_color() {
     local color=$1
     local message=$2
@@ -145,7 +167,7 @@ if [[ "$CONFIG_TYPE" == "oneline" ]]; then
     print_color $BLUE "  -interval [5-3600]"
     print_color $BLUE "  -region [US|EU|CH|AS|JP]"
     print_color $BLUE "  -mode [SIMPLE|ADMIN]"
-    print_color $BLUE "  -radio [DESERT_LONG_FAST|MOUNTAIN_STABLE|URBAN_DENSE|MESH_MAX_NODES|CUSTOM_ADVANCED]"
+    print_color $BLUE "  -radio [$RADIO_NAMES_JOINED]"
     print_color $BLUE "  -channel [channel_name]"
     print_color $BLUE "  -password [password] (optional)"
     print_color $BLUE "  -hops [1-10] (optional, default: 3)"
@@ -254,24 +276,26 @@ done
 # Radio Profile
 while true; do
     print_color $BLUE "6. Radio Profile:"
-    echo "   1. DESERT_LONG_FAST  - Long range, fast transmission"
-    echo "   2. MOUNTAIN_STABLE   - Stable connection in mountains"
-    echo "   3. URBAN_DENSE       - Dense urban environments"
-    echo "   4. MESH_MAX_NODES    - Maximum mesh network nodes"
-    echo "   5. CUSTOM_ADVANCED   - Custom advanced settings"
+    idx=1
+    for entry in "${RADIO_PROFILE_OPTIONS[@]}"; do
+        name="${entry%%|*}"
+        desc="${entry#*|}"
+        printf "   %2d. %-16s - %s\n" "$idx" "$name" "$desc"
+        ((idx++))
+    done
     echo
-    read -p "Select radio profile [1-5]: " choice
-    
-    case $choice in
-        1) RADIO="DESERT_LONG_FAST"; break ;;
-        2) RADIO="MOUNTAIN_STABLE"; break ;;
-        3) RADIO="URBAN_DENSE"; break ;;
-        4) RADIO="MESH_MAX_NODES"; break ;;
-        5) RADIO="CUSTOM_ADVANCED"; 
-           print_color $YELLOW "Note: Custom advanced parameters will be configured in the main tool"
-           break ;;
-        *) print_color $RED "Invalid selection. Please enter 1-5" ;;
-    esac
+    read -p "Select radio profile [1-${#RADIO_PROFILE_OPTIONS[@]}]: " choice
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#RADIO_PROFILE_OPTIONS[@]}" ]; then
+        selected="${RADIO_PROFILE_OPTIONS[$((choice-1))]}"
+        RADIO="${selected%%|*}"
+        if [ "$RADIO" = "CUSTOM_ADVANCED" ]; then
+            print_color $YELLOW "Note: Custom advanced parameters will be configured in the main tool"
+        fi
+        break
+    else
+        print_color $RED "Invalid selection. Please enter a number between 1 and ${#RADIO_PROFILE_OPTIONS[@]}"
+    fi
 done
 
 # Optional Parameters  

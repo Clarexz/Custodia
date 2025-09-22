@@ -138,29 +138,19 @@ void RoleManager::initializeGPSForRole() {
     
     switch (config.role) {
         case ROLE_TRACKER:
-            // Tracker necesita GPS activo con movimiento simulado
-            gpsManager.begin(GPS_SIM_LINEAR);
-            gpsManager.setSimulationSpeed(15.0f);  // 15 km/h simula vehículo lento
-            gpsManager.setUpdateInterval(1000);    // Actualizar cada segundo
-            //Serial.println("[MAIN] GPS configurado: Movimiento lineal, 15 km/h");
+            gpsManager.begin();
+            gpsManager.setUpdateInterval(config.gpsInterval * 1000U);
             break;
-            
         case ROLE_REPEATER:
-            // Repeater puede tener GPS fijo (solo para referencia)
-            gpsManager.begin(GPS_SIM_FIXED);
-            //Serial.println("[MAIN] GPS configurado: Posición fija");
+            gpsManager.begin();
             break;
-            
         case ROLE_RECEIVER:
-            // Receiver puede tener GPS fijo o móvil
-            gpsManager.begin(GPS_SIM_RANDOM_WALK);
-            gpsManager.setSimulationSpeed(5.0f);   // 5 km/h simula persona caminando
-            //Serial.println("[MAIN] GPS configurado: Caminata aleatoria, 5 km/h");
+            gpsManager.begin();
             break;
             
         default:
             Serial.println("[MAIN] Rol no reconocido - GPS en modo fijo");
-            gpsManager.begin(GPS_SIM_FIXED);
+            gpsManager.begin();
             break;
     }
 }

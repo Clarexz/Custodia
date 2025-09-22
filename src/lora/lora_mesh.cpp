@@ -120,18 +120,12 @@ bool LoRaManager::isToUs(const LoRaPacket* packet) {
     // FIXED: Solo es "para nosotros" si es específicamente nuestro ID
     // Los broadcasts NO son "para nosotros" - deben retransmitirse
     bool result = (packet->destinationID == deviceID);
-    if (configManager.isAdminMode()) {
-        Serial.println("[DEBUG] isToUs(): destID=" + String(packet->destinationID) + ", ourID=" + String(deviceID) + " → " + String(result));
-    }
     return result;
 }
 
 bool LoRaManager::isFromUs(const LoRaPacket* packet) {
     // Verificar si el packet es de nosotros
     bool result = (packet->sourceID == deviceID);
-    if (configManager.isAdminMode()) {
-        Serial.println("[DEBUG] isFromUs(): srcID=" + String(packet->sourceID) + ", ourID=" + String(deviceID) + " → " + String(result));
-    }
     return result;
 }
 
@@ -149,14 +143,6 @@ bool LoRaManager::hasRolePriority(DeviceRole role) {
  * Basado exactamente en FloodingRouter::perhapsRebroadcast()
  */
 bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
-    // DEBUG: Verificar entrada - SOLO EN MODO ADMIN
-    if (configManager.isAdminMode()) {
-        Serial.println("[DEBUG] perhapsRebroadcast() ENTRADA");
-        Serial.println("[DEBUG] packetID: " + String(packet->packetID));
-        Serial.println("[DEBUG] sourceID: " + String(packet->sourceID) + ", ourID: " + String(deviceID));
-        Serial.println("[DEBUG] destinationID: " + String(packet->destinationID));
-    }
-
     if (!isPacketFromSameNetwork(packet)) {
         if (configManager.isAdminMode()) {
             Serial.printf("[NETWORK] No retransmitir: packet de network diferente (Hash: %08X vs %08X)\n", 
@@ -170,23 +156,11 @@ bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
     bool fromUs = isFromUs(packet);
     bool hopLimitReached = (packet->hops >= packet->maxHops);
     
-    if (configManager.isAdminMode()) {
-        Serial.println("[DEBUG] toUs: " + String(toUs) + ", fromUs: " + String(fromUs) + ", hopLimit: " + String(hopLimitReached));
-    }
-    
     if (toUs || fromUs || hopLimitReached) {
         if (hopLimitReached) {
             stats.hopLimitReached++;
             if (configManager.isAdminMode()) {
                 Serial.println("[LoRa] Packet descartado: hop limit alcanzado (" + String(packet->hops) + "/" + String(packet->maxHops) + ")");
-            }
-        }
-        if (configManager.isAdminMode()) {
-            if (toUs) {
-                Serial.println("[DEBUG] SALIENDO: packet es para nosotros");
-            }
-            if (fromUs) {
-                Serial.println("[DEBUG] SALIENDO: packet es de nosotros");
             }
         }
         return false;
@@ -202,10 +176,7 @@ bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
     
     // Verificar si somos rebroadcaster
     bool canRebroadcast = isRebroadcaster();
-    if (configManager.isAdminMode()) {
-        Serial.println("[DEBUG] isRebroadcaster: " + String(canRebroadcast));
-    }
-    
+
     if (!canRebroadcast) {
         if (configManager.isAdminMode()) {
             Serial.println("[LoRa] No retransmitir: Role no permite rebroadcast");
@@ -213,16 +184,11 @@ bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
         return false;
     }
     
-    if (configManager.isAdminMode()) {
-        Serial.println("[DEBUG] ¡TODOS LOS CHECKS PASARON! Procediendo con retransmisión...");
-    }
-    
     // Calcular delay basado en SNR y role
     uint32_t meshDelay = getTxDelayMsecWeighted(stats.lastSNR, currentRole);
     
     if (configManager.isAdminMode()) {
-        Serial.println("[LoRa] Programando retransmisión en " + String(meshDelay) + " ms");
-        Serial.println("[LoRa] SNR: " + String(stats.lastSNR) + " dB, Role: " + String(currentRole));
+        Serial.println("Programando retransmisión en " + String(meshDelay) + " ms");
     }
     
     // Delay antes de retransmitir (SNR-based)
@@ -247,11 +213,12 @@ bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
     stats.totalAirTime += airTime;
     
     if (state == RADIOLIB_ERR_NONE) {
+        stats.rebroadcasts++;
         if (configManager.isAdminMode()) {
-            Serial.println("[LoRa] Retransmisión exitosa (hop " + String(retransmitPacket.hops) + ")");
-            Serial.println("[LoRa] Air time: " + String(airTime) + " ms");
+            Serial.println("Retransmisión exitosa (hop " + String(retransmitPacket.hops) + ")");
+            Serial.println("Air time: " + String(airTime) + " ms");
         }
-        
+
         // Volver a modo recepción
         radio.startReceive();
         status = LORA_STATUS_READY;

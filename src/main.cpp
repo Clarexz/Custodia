@@ -1,5 +1,7 @@
 #include <Arduino.h>
+#if defined(ARDUINO_ARCH_ESP32)
 #include <WiFi.h>
+#endif
 #include "config/config_manager.h"
 #include "gps/gps_manager.h"
 #include "battery/battery_manager.h"
@@ -41,7 +43,8 @@ void loop() {
     
     // Actualizar GPS y LoRa si está habilitado
     if (configManager.getState() == STATE_RUNNING && roleManager.isLoRaInitialized()) {
-        gpsManager.update();
+        // La lógica GPS actual sólo avanza los contadores cuando se envía un
+        // packet, por lo que no es necesario actualizarla constantemente.
         loraManager.update();
         
         // Procesar mensajes entrantes (importante para configuración remota)

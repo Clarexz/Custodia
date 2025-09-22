@@ -11,8 +11,8 @@
 #include <Arduino.h>
 #include <RadioLib.h>
 
-// Configuración de hardware
-#include "user_logic.h"
+// Configuración de hardware específica por plataforma
+#include "../user_logic.h"
 #define BOARD_HAS_LORA 1
 
 /*

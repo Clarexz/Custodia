@@ -9,7 +9,18 @@
 #define CONFIG_MANAGER_H
 
 #include <Arduino.h>
+
+#if defined(ARDUINO_ARCH_ESP32)
 #include <Preferences.h>
+#define CONFIG_MANAGER_HAS_PREFERENCES 1
+#else
+#define CONFIG_MANAGER_HAS_PREFERENCES 0
+#endif
+
+#if !CONFIG_MANAGER_HAS_PREFERENCES
+#include <Adafruit_LittleFS.h>
+#include <InternalFileSystem.h>
+#endif
 #include "../radio/radio_profiles.h"  // NUEVO: Para Radio Profiles
 
 /*
@@ -114,8 +125,16 @@ struct DeviceConfig {
  */
 class ConfigManager {
 private:
-    // Instancia de Preferences para manejo de EEPROM
+#if CONFIG_MANAGER_HAS_PREFERENCES
+    // Instancia de Preferences para manejo de EEPROM (solo ESP32)
     Preferences preferences;
+#endif
+#if !CONFIG_MANAGER_HAS_PREFERENCES
+    bool storageReady;
+    bool loadFromStorage();
+    bool saveToStorage();
+    void clearStorage();
+#endif
     
     // Configuración actual del dispositivo
     DeviceConfig config;

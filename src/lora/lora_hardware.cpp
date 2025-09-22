@@ -38,6 +38,7 @@ LoRaManager::LoRaManager() : radio(new Module((uint32_t)LORA_NSS_PIN, (uint32_t)
     // Inicializar mesh components
     currentRole = ROLE_NONE;
     recentBroadcasts.reserve(MAX_RECENT_PACKETS);
+    simplePacketPending = false;
 }
 
 /*
@@ -104,6 +105,7 @@ bool LoRaManager::begin(uint16_t devID) {
     //Serial.println("[LoRa] Región: " + configManager.getConfig().region);
     //Serial.println("[LoRa] Frecuencia: " + String(frequency) + " MHz");
     //Serial.println("[LoRa] Algoritmo Meshtastic: ACTIVADO");
+    (void)frequency;
     
     return true;
 }
@@ -115,12 +117,39 @@ bool LoRaManager::initRadio() {
     Serial.println("[LoRa] Inicializando módulo SX1262...");
     
     // Configurar SPI
+#if defined(ARDUINO_ARCH_ESP32)
     SPI.begin(LORA_SCK_PIN, LORA_MISO_PIN, LORA_MOSI_PIN, LORA_NSS_PIN);
-    
+#else
+    SPI.setPins(LORA_MISO_PIN, LORA_SCK_PIN, LORA_MOSI_PIN);
+    SPI.begin();
+#endif
+
+#if defined(NRF52_SERIES)
+    // El módulo Wio-SX1262 para XIAO usa TCXO alimentado desde DIO3 (1.8V) y RXEN dedicado
+    const float tcxoVoltage = 1.8f;
+    radio.XTAL = false;
+#else
+    const float tcxoVoltage = 1.6f;
+#endif
+
     // Inicializar módulo SX1262
-    int state = radio.begin();
-    
+    int state = radio.begin(
+        configManager.getFrequencyMHz(),
+        LORA_BANDWIDTH,
+        LORA_SPREADING_FACTOR,
+        LORA_CODING_RATE,
+        LORA_SYNC_WORD,
+        LORA_TX_POWER,
+        LORA_PREAMBLE_LENGTH,
+        tcxoVoltage,
+        false
+    );
+
     if (state == RADIOLIB_ERR_NONE) {
+#ifdef LORA_RF_SW_PIN
+        // Configurar control del switch RF (RXEN/TXEN) una vez inicializado el radio
+        radio.setRfSwitchPins(LORA_RF_SW_PIN, RADIOLIB_NC);
+#endif
         Serial.println("[LoRa] Módulo SX1262 inicializado correctamente");
         return true;
     } else {

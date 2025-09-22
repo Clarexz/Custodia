@@ -8,6 +8,8 @@
 #include "config_manager.h"
 #include "config_commands.h"
 
+#include <cstring>
+
 /*
  * DEFINICIONES Y CONSTANTES
  */
@@ -17,6 +19,32 @@
 
 // Tiempo de espera al inicio para entrar en modo configuración
 #define STARTUP_CONFIG_WAIT 5000
+
+#if !CONFIG_MANAGER_HAS_PREFERENCES
+using namespace Adafruit_LittleFS_Namespace;
+
+static constexpr const char* CONFIG_STORAGE_PATH = "/custodia.cfg";
+static constexpr uint32_t CONFIG_STORAGE_MAGIC = 0x43555354; // 'CUST'
+static constexpr uint16_t CONFIG_STORAGE_VERSION = 1;
+static constexpr size_t STORAGE_NAME_CAPACITY = 21;   // 20 chars + null
+static constexpr size_t STORAGE_PASS_CAPACITY = 33;   // 32 chars + null
+
+struct PersistedNetwork {
+    char name[STORAGE_NAME_CAPACITY];
+    char password[STORAGE_PASS_CAPACITY];
+    uint32_t hash;
+    uint8_t active;
+};
+
+struct PersistedData {
+    uint32_t magic;
+    uint16_t version;
+    DeviceConfig config;
+    uint8_t networkCount;
+    int8_t activeIndex;
+    PersistedNetwork networks[MAX_NETWORKS];
+};
+#endif
 
 /*
  * INSTANCIA GLOBAL
@@ -28,6 +56,10 @@ ConfigManager configManager;
  */
 ConfigManager::ConfigManager() {
     currentState = STATE_BOOT;
+
+#if !CONFIG_MANAGER_HAS_PREFERENCES
+    storageReady = false;
+#endif
 
     // ===== INICIALIZAR VARIABLES DE NETWORKS =====
     networkCount = 0;
@@ -43,12 +75,21 @@ ConfigManager::ConfigManager() {
  * MÉTODO PRINCIPAL DE INICIALIZACIÓN
  */
 void ConfigManager::begin() {
+#if CONFIG_MANAGER_HAS_PREFERENCES
     // Inicializar sistema de preferencias con namespace "mesh-config"
     if (!preferences.begin("mesh-config", false)) {
         Serial.println("[ERROR] No se pudo inicializar sistema de preferencias");
         return;
     }
-    
+#else
+    storageReady = InternalFS.begin();
+    if (!storageReady) {
+        Serial.println("[WARN] No se pudo montar InternalFS. La configuración no se almacenará de forma persistente.");
+    } else {
+        Serial.println("[INFO] Persistencia habilitada con InternalFS (LittleFS).");
+    }
+#endif
+
     // Cargar configuración existente desde EEPROM
     loadConfig();
 
@@ -69,7 +110,7 @@ void ConfigManager::begin() {
         printConfig();
         
         // NUEVO: Aplicar perfil LoRa cargado
-        if (config.radioProfile >= PROFILE_DESERT_LONG_FAST && config.radioProfile <= PROFILE_CUSTOM_ADVANCED) {
+        if (radioProfileManager.isSupportedProfile(static_cast<uint8_t>(config.radioProfile))) {
             radioProfileManager.applyProfile(config.radioProfile);
             Serial.println("[INFO] Perfil LoRa aplicado: " + getRadioProfileName());
         }
@@ -231,6 +272,7 @@ void ConfigManager::processSerialInput() {
  * CARGA DE CONFIGURACIÓN DESDE EEPROM
  */
 void ConfigManager::loadConfig() {
+#if CONFIG_MANAGER_HAS_PREFERENCES
     // Cargar cada parámetro con valores por defecto si no existen
     config.role = (DeviceRole)preferences.getUChar("role", ROLE_NONE);
     config.deviceID = preferences.getUShort("deviceID", 0);
@@ -242,6 +284,12 @@ void ConfigManager::loadConfig() {
     
     // NUEVO: Cargar Radio Profile
     config.radioProfile = (RadioProfile)preferences.getUChar("radioProfile", PROFILE_MESH_MAX_NODES);
+#else
+    if (!storageReady || !loadFromStorage()) {
+        setDefaultConfig();
+        Serial.println("[INFO] Configuración por defecto cargada (sin datos persistidos).");
+    }
+#endif
     
     // Establecer versión del firmware actual
     strncpy(config.version, FIRMWARE_VERSION, sizeof(config.version) - 1);
@@ -257,6 +305,7 @@ void ConfigManager::loadConfig() {
  * GUARDADO DE CONFIGURACIÓN EN EEPROM
  */
 void ConfigManager::saveConfig() {
+#if CONFIG_MANAGER_HAS_PREFERENCES
     // Guardar cada parámetro en su clave específica
     preferences.putUChar("role", config.role);
     preferences.putUShort("deviceID", config.deviceID);
@@ -271,8 +320,15 @@ void ConfigManager::saveConfig() {
 
     //  GUARDAR NETWORKS 
     saveNetworks();
-    
+
     Serial.println("[OK] Configuración guardada exitosamente.");
+#else
+    if (saveToStorage()) {
+        Serial.println("[OK] Configuración guardada exitosamente.");
+    } else {
+        Serial.println("[WARN] No se pudo guardar la configuración en el almacenamiento interno.");
+    }
+#endif
 }
 
 /*
@@ -292,7 +348,9 @@ float ConfigManager::getFrequencyMHz() {
 
 void ConfigManager::setDataMode(DataDisplayMode mode) {
     config.dataMode = mode;
+#if CONFIG_MANAGER_HAS_PREFERENCES
     preferences.putUChar("dataMode", config.dataMode);
+#endif
 }
 
 void ConfigManager::setGpsInterval(uint16_t interval) {
@@ -425,6 +483,7 @@ String ConfigManager::generateRandomPassword() {
 }
 // Guardar networks a EEPROM
 void ConfigManager::saveNetworks() {
+#if CONFIG_MANAGER_HAS_PREFERENCES
     // Guardar contador de networks
     preferences.putUChar(NETWORK_COUNT_KEY, networkCount);
     
@@ -441,12 +500,25 @@ void ConfigManager::saveNetworks() {
         preferences.putString(passKey.c_str(), networks[i].password);
         preferences.putUInt(hashKey.c_str(), networks[i].hash);
     }
-    
+
     Serial.println("[Networks] Guardadas " + String(networkCount) + " networks en EEPROM.");
+#else
+    if (!storageReady) {
+        Serial.println("[WARN] Almacenamiento interno no disponible para guardar networks.");
+        return;
+    }
+
+    if (saveToStorage()) {
+        Serial.println("[Networks] Guardadas " + String(networkCount) + " networks en InternalFS.");
+    } else {
+        Serial.println("[WARN] Error al guardar networks en InternalFS.");
+    }
+#endif
 }
 
 // Cargar networks desde EEPROM
 void ConfigManager::loadNetworks() {
+#if CONFIG_MANAGER_HAS_PREFERENCES
     // Cargar contador de networks
     networkCount = preferences.getUChar(NETWORK_COUNT_KEY, 0);
     
@@ -492,6 +564,28 @@ void ConfigManager::loadNetworks() {
             Serial.println("[Networks] Network activa: " + networks[activeNetworkIndex].name);
         }
     }
+#else
+    if (!storageReady) {
+        networkCount = 0;
+        activeNetworkIndex = -1;
+        return;
+    }
+
+    if (activeNetworkIndex >= networkCount) {
+        activeNetworkIndex = networkCount > 0 ? 0 : -1;
+    }
+
+    for (int i = 0; i < networkCount; i++) {
+        networks[i].active = (i == activeNetworkIndex);
+    }
+
+    if (networkCount > 0) {
+        Serial.println("[Networks] Cargadas " + String(networkCount) + " networks desde InternalFS.");
+        if (activeNetworkIndex >= 0) {
+            Serial.println("[Networks] Network activa: " + networks[activeNetworkIndex].name);
+        }
+    }
+#endif
 }
 
 // Verificar si el nombre está en la lista de nombres reservados
@@ -685,6 +779,7 @@ bool ConfigManager::canDeleteNetwork(String name, String& errorMsg) {
 
 // Calcular memoria EEPROM usada por networks (aproximación)
 uint16_t ConfigManager::getEEPROMUsageBytes() {
+#if CONFIG_MANAGER_HAS_PREFERENCES
     uint16_t totalBytes = 0;
     
     // Bytes fijos por network metadata
@@ -703,10 +798,14 @@ uint16_t ConfigManager::getEEPROMUsageBytes() {
     totalBytes += networkCount * 30; // ~30 bytes promedio por set de keys
     
     return totalBytes;
+#else
+    return 0;
+#endif
 }
 
 // Calcular memoria EEPROM disponible (estimación conservadora)
 uint16_t ConfigManager::getAvailableEEPROMBytes() {
+#if CONFIG_MANAGER_HAS_PREFERENCES
     // ESP32 Preferences tiene ~4KB disponibles típicamente
     // Reservamos espacio para la configuración general del dispositivo
     const uint16_t TOTAL_EEPROM_SIZE = 4096;
@@ -721,6 +820,9 @@ uint16_t ConfigManager::getAvailableEEPROMBytes() {
     }
     
     return availableForNetworks - usedBytes;
+#else
+    return 0;
+#endif
 }
 
 void ConfigManager::handleNetworkStatus() {
@@ -776,15 +878,19 @@ void ConfigManager::handleNetworkStatus() {
     Serial.println("  Disponible:   " + String(availableBytes) + " bytes");
     Serial.println("  Total:        " + String(totalNetworkSpace) + " bytes");
     
-    // Calcular porcentaje usado
-    float percentUsed = (float)usedBytes / (float)totalNetworkSpace * 100.0;
-    Serial.println("  Uso:          " + String(percentUsed, 1) + "%");
-    
-    // Advertencias de memoria
-    if (percentUsed > 80.0) {
-        Serial.println("  [WARNING] Memoria casi llena!");
-    } else if (percentUsed > 90.0) {
-        Serial.println("  [CRITICAL] Memoria crítica!");
+    if (totalNetworkSpace > 0) {
+        // Calcular porcentaje usado
+        float percentUsed = (float)usedBytes / (float)totalNetworkSpace * 100.0;
+        Serial.println("  Uso:          " + String(percentUsed, 1) + "%");
+        
+        // Advertencias de memoria
+        if (percentUsed > 90.0) {
+            Serial.println("  [CRITICAL] Memoria crítica!");
+        } else if (percentUsed > 80.0) {
+            Serial.println("  [WARNING] Memoria casi llena!");
+        }
+    } else {
+        Serial.println("  Uso:          N/A (sin almacenamiento persistente)");
     }
     
     // Capacidad estimada
@@ -824,9 +930,126 @@ void ConfigManager::printConfig() {
 void ConfigManager::printWelcome() {
     Serial.println("\n==================================================");
     Serial.println("    CUSTOM MESHTASTIC GPS TRACKER v" + String(config.version));
+#if defined(ARDUINO_ARCH_ESP32)
     Serial.println("    ESP32-S3 + LoRa SX1262");
+#elif defined(NRF52_SERIES)
+    Serial.println("    nRF52840 + LoRa SX1262");
+#else
+    Serial.println("    Plataforma: Desconocida");
+#endif
     Serial.println("==================================================");
 }
+
+#if !CONFIG_MANAGER_HAS_PREFERENCES
+
+bool ConfigManager::loadFromStorage() {
+    if (!storageReady) {
+        return false;
+    }
+
+    File file(InternalFS);
+    if (!file.open(CONFIG_STORAGE_PATH, FILE_O_READ)) {
+        return false;
+    }
+
+    PersistedData data = {};
+    size_t readLen = file.read(&data, sizeof(data));
+    file.close();
+
+    if (readLen != sizeof(data)) {
+        Serial.println("[WARN] Archivo de configuración incompleto, usando valores por defecto.");
+        return false;
+    }
+
+    if (data.magic != CONFIG_STORAGE_MAGIC || data.version != CONFIG_STORAGE_VERSION) {
+        Serial.println("[WARN] Versión de configuración incompatible, se ignorará el archivo.");
+        return false;
+    }
+
+    config = data.config;
+
+    uint8_t storedCount = data.networkCount;
+    if (storedCount > MAX_NETWORKS) {
+        storedCount = MAX_NETWORKS;
+    }
+
+    networkCount = storedCount;
+    activeNetworkIndex = data.activeIndex;
+
+    if (activeNetworkIndex >= networkCount) {
+        activeNetworkIndex = networkCount > 0 ? 0 : -1;
+    }
+
+    for (int i = 0; i < MAX_NETWORKS; i++) {
+        networks[i] = SimpleNetwork();
+    }
+
+    for (int i = 0; i < networkCount; i++) {
+        networks[i].name = String(data.networks[i].name);
+        networks[i].password = String(data.networks[i].password);
+        networks[i].hash = data.networks[i].hash;
+        networks[i].active = (i == activeNetworkIndex);
+    }
+
+    return true;
+}
+
+bool ConfigManager::saveToStorage() {
+    if (!storageReady) {
+        return false;
+    }
+
+    PersistedData data = {};
+    data.magic = CONFIG_STORAGE_MAGIC;
+    data.version = CONFIG_STORAGE_VERSION;
+    data.config = config;
+
+    uint8_t storedCount = networkCount;
+    if (storedCount > MAX_NETWORKS) {
+        storedCount = MAX_NETWORKS;
+    }
+
+    data.networkCount = storedCount;
+    data.activeIndex = activeNetworkIndex;
+
+    for (uint8_t i = 0; i < storedCount; i++) {
+        strncpy(data.networks[i].name, networks[i].name.c_str(), STORAGE_NAME_CAPACITY - 1);
+        data.networks[i].name[STORAGE_NAME_CAPACITY - 1] = '\0';
+        strncpy(data.networks[i].password, networks[i].password.c_str(), STORAGE_PASS_CAPACITY - 1);
+        data.networks[i].password[STORAGE_PASS_CAPACITY - 1] = '\0';
+        data.networks[i].hash = networks[i].hash;
+        data.networks[i].active = (i == activeNetworkIndex) ? 1 : 0;
+    }
+
+    // Limpiar entradas restantes
+    for (uint8_t i = storedCount; i < MAX_NETWORKS; i++) {
+        memset(&data.networks[i], 0, sizeof(PersistedNetwork));
+    }
+
+    File file(InternalFS);
+    if (!file.open(CONFIG_STORAGE_PATH, FILE_O_WRITE)) {
+        return false;
+    }
+
+    file.truncate(0);
+    size_t written = file.write(reinterpret_cast<const uint8_t*>(&data), sizeof(data));
+    file.flush();
+    file.close();
+
+    return written == sizeof(data);
+}
+
+void ConfigManager::clearStorage() {
+    if (!storageReady) {
+        return;
+    }
+
+    if (InternalFS.exists(CONFIG_STORAGE_PATH)) {
+        InternalFS.remove(CONFIG_STORAGE_PATH);
+    }
+}
+
+#endif
 
 void ConfigManager::printPrompt() {
     Serial.print("config> ");

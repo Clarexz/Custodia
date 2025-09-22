@@ -54,9 +54,10 @@ void ReceiverRole::handleMode() {
     LoRaStats stats = loraManager.getStats();
     if (stats.packetsReceived > lastPacketCount) {
         if (configManager.isSimpleMode()) {
-            // Generar packet simulado para mostrar en modo simple
-            String packet = "001,25.302688,-98.277675,4100,1718661240"; // Ejemplo
-            displayManager.showSimpleReceiverOutput(packet);
+            String packet;
+            if (loraManager.fetchSimplePacket(packet)) {
+                displayManager.showSimpleReceiverOutput(packet);
+            }
         }
         lastPacketCount = stats.packetsReceived;
     }

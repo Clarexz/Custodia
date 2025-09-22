@@ -202,11 +202,6 @@ void RemoteCommands::processIncomingMessages() {
         LoRaPacket packet;
         if (loraManager.receivePacket(&packet)) {
             
-            // DEBUG: Mostrar qué tipos de mensaje llegan
-            if (configManager.isAdminMode()) {
-                Serial.println("[DEBUG] Mensaje recibido tipo: " + String(packet.messageType));
-            }
-            
             // Procesar según tipo de mensaje
             switch (packet.messageType) {
                 case MSG_GPS_DATA:
@@ -214,29 +209,22 @@ void RemoteCommands::processIncomingMessages() {
                     break;
                     
                 case MSG_DISCOVERY_REQUEST:
-                    Serial.println("[DEBUG] Procesando discovery request");
                     loraManager.processDiscoveryRequest(&packet);
                     break;
                     
                 case MSG_DISCOVERY_RESPONSE:
-                    Serial.println("[DEBUG] Procesando discovery response");
                     loraManager.processDiscoveryResponse(&packet);
                     break;
                     
                 case MSG_CONFIG_CMD:
-                    Serial.println("[DEBUG] Procesando config command");
                     loraManager.processRemoteConfigCommand(&packet);
                     break;
                     
                 case MSG_CONFIG_RESPONSE:
-                    Serial.println("[DEBUG] Procesando config response");
                     loraManager.processRemoteConfigResponse(&packet);
                     break;
                     
                 default:
-                    if (configManager.isAdminMode()) {
-                        Serial.println("[DEBUG] Tipo de mensaje desconocido: " + String(packet.messageType));
-                    }
                     break;
             }
         }

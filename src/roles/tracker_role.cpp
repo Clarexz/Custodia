@@ -67,6 +67,7 @@ void TrackerRole::handleMode() {
         digitalWrite(LED_PIN, LOW);
         
         // Obtener datos GPS actuales
+        gpsManager.update();
         GPSData gpsData = gpsManager.getCurrentData();
         
         if (gpsData.hasValidFix) {

@@ -7,7 +7,10 @@
 
 #include "config_manager.h"
 #include "config_commands.h"
+
+#if defined(ARDUINO_ARCH_ESP32)
 #include <WiFi.h>
+#endif
 
 /*
  * MANEJADORES DE COMANDOS DE CONFIGURACIÓN
@@ -133,97 +136,67 @@ void ConfigManager::handleConfigRegion(String value) {
 
 void ConfigManager::handleConfigRadioProfile(String value) {
     value.trim();
-    value.toUpperCase();
-    
-    // Comando principal: CONFIG_RADIO_PROFILE <profile_name>
-    if (value == "DESERT_LONG_FAST" || value == "DESERT") {
-        config.radioProfile = PROFILE_DESERT_LONG_FAST;
-        if (radioProfileManager.applyProfile(PROFILE_DESERT_LONG_FAST)) {
-            Serial.println("[OK] Perfil configurado: DESERT_LONG_FAST");
-            Serial.println("[INFO] Optimizado para máximo alcance en terreno abierto");
-            Serial.println("[INFO] SF11, 250kHz, ~8km alcance, airtime ~2.2s");
-        }
+
+    if (value.length() == 0) {
+        Serial.println("[ERROR] Debe especificar un perfil");
+        Serial.println("[INFO] Opciones: " + radioProfileManager.getProfileOptionsList());
+        return;
     }
-    else if (value == "MOUNTAIN_STABLE" || value == "MOUNTAIN") {
-        config.radioProfile = PROFILE_MOUNTAIN_STABLE;
-        if (radioProfileManager.applyProfile(PROFILE_MOUNTAIN_STABLE)) {
-            Serial.println("[OK] Perfil configurado: MOUNTAIN_STABLE");
-            Serial.println("[INFO] Optimizado para condiciones adversas y obstáculos");
-            Serial.println("[INFO] SF10, 125kHz, ~4km alcance, airtime ~0.9s");
-        }
-    }
-    else if (value == "URBAN_DENSE" || value == "URBAN") {
-        config.radioProfile = PROFILE_URBAN_DENSE;
-        if (radioProfileManager.applyProfile(PROFILE_URBAN_DENSE)) {
-            Serial.println("[OK] Perfil configurado: URBAN_DENSE");
-            Serial.println("[INFO] Optimizado para alta velocidad y testing");
-            Serial.println("[INFO] SF7, 500kHz, ~800m alcance, airtime ~80ms");
-        }
-    }
-    else if (value == "MESH_MAX_NODES" || value == "MESH") {
-        config.radioProfile = PROFILE_MESH_MAX_NODES;
-        if (radioProfileManager.applyProfile(PROFILE_MESH_MAX_NODES)) {
-            Serial.println("[OK] Perfil configurado: MESH_MAX_NODES");
-            Serial.println("[INFO] Balance optimizado para redes grandes (20-30 nodos)");
-            Serial.println("[INFO] SF9, 250kHz, ~2.5km alcance, airtime ~320ms");
-        }
-    }
-    else if (value == "CUSTOM_ADVANCED" || value == "CUSTOM") {
-        config.radioProfile = PROFILE_CUSTOM_ADVANCED;
-        if (radioProfileManager.applyProfile(PROFILE_CUSTOM_ADVANCED)) {
-            Serial.println("[OK] Perfil configurado: CUSTOM_ADVANCED");
-            Serial.println("[INFO] Configuración manual activa");
-            Serial.println("[INFO] Use RADIO_PROFILE_CUSTOM <param> <value> para configurar");
-            Serial.println("[INFO] Parámetros: SF, BW, CR, POWER, PREAMBLE");
-        }
-    }
-    else if (value == "LIST") {
+
+    String upper = value;
+    upper.toUpperCase();
+
+    if (upper == "LIST") {
         radioProfileManager.printAllProfiles();
+        return;
     }
-    else if (value.startsWith("INFO ")) {
-        String profileName = value.substring(5);
-        profileName.trim();
-        profileName.toUpperCase();
-        
-        RadioProfile profile;
-        bool valid = true;
-        
-        if (profileName == "DESERT_LONG_FAST" || profileName == "DESERT") {
-            profile = PROFILE_DESERT_LONG_FAST;
-        }
-        else if (profileName == "MOUNTAIN_STABLE" || profileName == "MOUNTAIN") {
-            profile = PROFILE_MOUNTAIN_STABLE;
-        }
-        else if (profileName == "URBAN_DENSE" || profileName == "URBAN") {
-            profile = PROFILE_URBAN_DENSE;
-        }
-        else if (profileName == "MESH_MAX_NODES" || profileName == "MESH") {
-            profile = PROFILE_MESH_MAX_NODES;
-        }
-        else if (profileName == "CUSTOM_ADVANCED" || profileName == "CUSTOM") {
-            profile = PROFILE_CUSTOM_ADVANCED;
-        }
-        else {
-            Serial.println("[ERROR] Perfil desconocido: " + profileName);
-            valid = false;
-        }
-        
-        if (valid) {
-            radioProfileManager.printProfileInfo(profile);
-        }
-    }
-    else if (value == "COMPARE") {
+
+    if (upper == "COMPARE") {
         radioProfileManager.printProfileComparison();
+        return;
     }
-    else {
+
+    if (upper.startsWith("INFO")) {
+        int spaceIndex = value.indexOf(' ');
+        if (spaceIndex < 0) {
+            Serial.println("[ERROR] Uso: CONFIG_RADIO_PROFILE INFO <nombre>");
+            return;
+        }
+        String profileName = value.substring(spaceIndex + 1);
+        profileName.trim();
+
+        RadioProfile infoProfile;
+        if (!radioProfileManager.tryParseProfile(profileName, infoProfile)) {
+            Serial.println("[ERROR] Perfil desconocido: " + profileName);
+            Serial.println("[INFO] Opciones: " + radioProfileManager.getProfileOptionsList());
+        }
+        return;
+    }
+
+    RadioProfile profile;
+    if (!radioProfileManager.tryParseProfile(value, profile)) {
         Serial.println("[ERROR] Perfil inválido: " + value);
-        Serial.println("[INFO] Perfiles disponibles:");
-        Serial.println("  DESERT_LONG_FAST   - Máximo alcance campo abierto");
-        Serial.println("  MOUNTAIN_STABLE    - Condiciones adversas");
-        Serial.println("  URBAN_DENSE        - Alta velocidad urbana");
-        Serial.println("  MESH_MAX_NODES     - Balance redes grandes");
-        Serial.println("  CUSTOM_ADVANCED    - Configuración manual");
-        Serial.println("[INFO] Comandos: LIST, INFO <perfil>, COMPARE");
+        Serial.println("[INFO] Opciones: " + radioProfileManager.getProfileOptionsList());
+        Serial.println("[INFO] Comandos disponibles: LIST, INFO <perfil>, COMPARE");
+        return;
+    }
+
+    config.radioProfile = profile;
+    if (radioProfileManager.applyProfile(profile)) {
+        RadioProfileConfig cfg = radioProfileManager.getProfileConfig(profile);
+        Serial.println("[OK] Perfil configurado: " + String(cfg.name));
+        Serial.println("[INFO] " + String(cfg.description));
+        Serial.println("[INFO] SF" + String(cfg.spreadingFactor) +
+                       ", " + String(cfg.bandwidth) + "kHz, CR 4/" + String(cfg.codingRate) +
+                       ", Power " + String(cfg.txPower) + " dBm");
+        Serial.println("[INFO] Alcance aprox.: ~" + String(cfg.approxRange) + "m, Airtime ~" + String(cfg.airtimeMs) + "ms");
+
+        if (profile == PROFILE_CUSTOM_ADVANCED) {
+            Serial.println("[INFO] Use RADIO_PROFILE_CUSTOM <param> <value> para personalizar (SF, BW, CR, POWER, PREAMBLE)");
+        }
+        if (profile == PROFILE_SHORT_TURBO) {
+            Serial.println("[WARN] SHORT_TURBO usa 500kHz. Verifique la legalidad en su región antes de usarlo.");
+        }
     }
 }
 
@@ -371,7 +344,11 @@ void ConfigManager::handleConfigReset() {
             
             if (confirm == "Y" || confirm == "YES") {
                 setDefaultConfig();
+#if CONFIG_MANAGER_HAS_PREFERENCES
                 preferences.clear();
+#else
+                clearStorage();
+#endif
                 Serial.println("[OK] Configuración reseteada. Reinicie el dispositivo.");
                 return;
             } else {
@@ -387,9 +364,19 @@ void ConfigManager::handleConfigReset() {
 void ConfigManager::handleInfo() {
     Serial.println("\n=== INFORMACIÓN DEL DISPOSITIVO ===");
     Serial.println("Firmware: Custom Meshtastic v" + String(config.version));
+#if defined(ARDUINO_ARCH_ESP32)
     Serial.println("Chip: ESP32-S3");
     Serial.println("MAC: " + WiFi.macAddress());
     Serial.println("Free Heap: " + String(ESP.getFreeHeap()) + " bytes");
+#elif defined(NRF52_SERIES)
+    Serial.println("Chip: nRF52");
+    Serial.println("MAC: N/A (sin módulo WiFi)");
+    Serial.println("Free Heap: N/A");
+#else
+    Serial.println("Chip: Desconocido");
+    Serial.println("MAC: N/A");
+    Serial.println("Free Heap: N/A");
+#endif
     Serial.println("====================================");
 }
 
@@ -422,11 +409,15 @@ void ConfigManager::handleHelp() {
     Serial.println("RADIO_PROFILE_STATUS                     - Mostrar perfil actual");
     Serial.println("");
     Serial.println("=== PERFILES DISPONIBLES ===");
-    Serial.println("DESERT_LONG_FAST     - Máximo alcance (8km, 2.2s, batería 3/10)");
-    Serial.println("MOUNTAIN_STABLE      - Condiciones adversas (4km, 0.9s, batería 5/10)");
-    Serial.println("URBAN_DENSE          - Alta velocidad (800m, 80ms, batería 8/10)");
-    Serial.println("MESH_MAX_NODES       - Balance redes grandes (2.5km, 320ms, batería 7/10)");
-    Serial.println("CUSTOM_ADVANCED      - Configuración manual experta");
+    for (int i = 0; i < PROFILE_COUNT; i++) {
+        RadioProfile profile = static_cast<RadioProfile>(i);
+        RadioProfileConfig cfg = radioProfileManager.getProfileConfig(profile);
+        if (profile == PROFILE_CUSTOM_ADVANCED) {
+            Serial.println(String(cfg.name) + " - Configuración manual experta");
+            continue;
+        }
+        Serial.println(String(cfg.name) + " - " + String(cfg.description));
+    }
     Serial.println("");
     Serial.println("=== PARÁMETROS CUSTOM ===");
     Serial.println("SF (7-12), BW (125/250/500), CR (5-8), POWER (2-20), PREAMBLE (6-65535)");
@@ -582,31 +573,13 @@ void ConfigManager::handleQuickConfig(String params) {
     
     // 6. CONFIGURAR RADIO PROFILE (parámetro 5 - OBLIGATORIO)
     String radioProfile = parameters[5];
-    radioProfile.toUpperCase();
-    
-    if (radioProfile == "DESERT_LONG_FAST" || radioProfile == "DESERT") {
-        config.radioProfile = PROFILE_DESERT_LONG_FAST;
-        Serial.println("[Q_CONFIG] ✓ Radio Profile: DESERT_LONG_FAST");
-    }
-    else if (radioProfile == "MOUNTAIN_STABLE" || radioProfile == "MOUNTAIN") {
-        config.radioProfile = PROFILE_MOUNTAIN_STABLE;
-        Serial.println("[Q_CONFIG] ✓ Radio Profile: MOUNTAIN_STABLE");
-    }
-    else if (radioProfile == "URBAN_DENSE" || radioProfile == "URBAN") {
-        config.radioProfile = PROFILE_URBAN_DENSE;
-        Serial.println("[Q_CONFIG] ✓ Radio Profile: URBAN_DENSE");
-    }
-    else if (radioProfile == "MESH_MAX_NODES" || radioProfile == "MESH") {
-        config.radioProfile = PROFILE_MESH_MAX_NODES;
-        Serial.println("[Q_CONFIG] ✓ Radio Profile: MESH_MAX_NODES");
-    }
-    else if (radioProfile == "CUSTOM_ADVANCED" || radioProfile == "CUSTOM") {
-        config.radioProfile = PROFILE_CUSTOM_ADVANCED;
-        Serial.println("[Q_CONFIG] ✓ Radio Profile: CUSTOM_ADVANCED");
-    }
-    else {
+    RadioProfile parsedProfile;
+    if (radioProfileManager.tryParseProfile(radioProfile, parsedProfile)) {
+        config.radioProfile = parsedProfile;
+        Serial.println("[Q_CONFIG] ✓ Radio Profile: " + radioProfileManager.getProfileName(parsedProfile));
+    } else {
         Serial.println("[Q_CONFIG] ✗ Radio Profile inválido: " + radioProfile);
-        Serial.println("[Q_CONFIG]   Opciones: DESERT_LONG_FAST, MOUNTAIN_STABLE, URBAN_DENSE, MESH_MAX_NODES, CUSTOM_ADVANCED");
+        Serial.println("[Q_CONFIG]   Opciones: " + radioProfileManager.getProfileOptionsList());
         allValid = false;
     }
     

@@ -5,6 +5,7 @@
  */
 
 #include "../lora.h"
+#include "../gps/gps_manager.h"
 
 /*
  * ENVÍO DE DATOS GPS (sin cambios)
@@ -166,13 +167,45 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
         // Packet válido y nuevo
         stats.packetsReceived++;
         
-        // SOLO mostrar debug en modo ADMIN
-        if (configManager.isAdminMode()) {
-            Serial.println("[LoRa] Packet válido recibido");
-            Serial.println("[LoRa] RSSI: " + String(stats.lastRSSI) + " dBm");
-            Serial.println("[LoRa] SNR: " + String(stats.lastSNR) + " dB");
-            Serial.println("[LoRa] Source: " + String(packet->sourceID) + ", Hops: " + String(packet->hops) + "/" + String(packet->maxHops));
-            Serial.println("[LoRa] Message Type: " + String(packet->messageType));
+        bool adminMode = configManager.isAdminMode();
+        float receivedLat = 0.0f;
+        float receivedLon = 0.0f;
+        uint32_t receivedTimestamp = 0;
+        float receivedVoltage = 0.0f;
+        bool hasGPSDetails = false;
+
+        if (adminMode) {
+            String roleName = configManager.getRoleString(currentRole);
+            switch (currentRole) {
+                case ROLE_REPEATER:
+                    roleName += " (ROUTER priority)";
+                    break;
+                case ROLE_TRACKER:
+                case ROLE_RECEIVER:
+                    roleName += " (CLIENT priority)";
+                    break;
+                default:
+                    break;
+            }
+
+            Serial.println("============== STATUS ==============");
+            Serial.println("Role: " + roleName);
+            Serial.println("Estado LoRa: " + getStatusString());
+
+            if (configManager.hasActiveNetwork()) {
+                SimpleNetwork* network = configManager.getActiveNetwork();
+                if (network) {
+                    String hashStr = String(network->hash, HEX);
+                    hashStr.toLowerCase();
+                    Serial.println("Network: " + network->name + " (Hash: " + hashStr + ")");
+                } else {
+                    Serial.println("Network: NINGUNA ACTIVA - Modo legacy");
+                }
+            } else {
+                Serial.println("Network: NINGUNA ACTIVA - Modo legacy");
+            }
+
+            Serial.println("Posición propia: " + gpsManager.formatCoordinates());
         }
         
         // Agregar a seen packets para evitar futuras retransmisiones
@@ -186,17 +219,28 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                 uint32_t timestamp;
                 uint16_t sourceID;
                 if (processGPSPacket(packet, &lat, &lon, &timestamp, &sourceID)) {
-                    // SOLO mostrar debug en modo ADMIN
-                    if (configManager.isAdminMode()) {
-                        Serial.println("[LoRa] GPS recibido de device " + String(sourceID) + 
-                                     ": " + String(lat, 6) + "," + String(lon, 6));
+                    GPSPayload* gpsPayload = (GPSPayload*)packet->payload;
+                    String sourceStr = String(sourceID);
+                    while (sourceStr.length() < 3) {
+                        sourceStr = "0" + sourceStr;
                     }
+                    receivedLat = lat;
+                    receivedLon = lon;
+                    receivedTimestamp = timestamp;
+                    receivedVoltage = gpsPayload->batteryVoltage;
+                    hasGPSDetails = true;
+                    lastSimplePacket = sourceStr + "," +
+                                       String(lat, 6) + "," +
+                                       String(lon, 6) + "," +
+                                       String(gpsPayload->batteryVoltage) + "," +
+                                       String(timestamp);
+                    simplePacketPending = true;
                 }
                 break;
                 
             case MSG_DISCOVERY_REQUEST:
                 // NUEVO: Procesar solicitud de discovery
-                if (configManager.isAdminMode()) {
+                if (adminMode) {
                     Serial.println("[LoRa] Discovery request recibido de device " + String(packet->sourceID));
                 }
                 // Procesar inmediatamente
@@ -205,7 +249,7 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                 
             case MSG_DISCOVERY_RESPONSE:
                 // NUEVO: Procesar respuesta de discovery
-                if (configManager.isAdminMode()) {
+                if (adminMode) {
                     Serial.println("[LoRa] Discovery response recibido de device " + String(packet->sourceID));
                 }
                 // Procesar inmediatamente
@@ -214,7 +258,7 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                 
             case MSG_CONFIG_CMD:
                 // NUEVO: Procesar comando de configuración remota
-                if (configManager.isAdminMode()) {
+                if (adminMode) {
                     Serial.println("[LoRa] Comando de configuración recibido de device " + String(packet->sourceID));
                 }
                 // Procesar inmediatamente
@@ -223,7 +267,7 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                 
             case MSG_CONFIG_RESPONSE:
                 // NUEVO: Procesar respuesta de configuración
-                if (configManager.isAdminMode()) {
+                if (adminMode) {
                     Serial.println("[LoRa] Respuesta de configuración recibida de device " + String(packet->sourceID));
                 }
                 // Procesar inmediatamente
@@ -232,19 +276,31 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                 
             case MSG_HEARTBEAT:
                 // SOLO mostrar en modo ADMIN
-                if (configManager.isAdminMode()) {
+                if (adminMode) {
                     Serial.println("[LoRa] Heartbeat recibido de device " + String(packet->sourceID));
                 }
                 break;
                 
             default:
                 // SOLO mostrar en modo ADMIN
-                if (configManager.isAdminMode()) {
+                if (adminMode) {
                     Serial.println("[LoRa] Packet tipo desconocido: " + String(packet->messageType));
                 }
                 break;
         }
-        
+
+        if (adminMode) {
+            Serial.println("Packet válido recibido");
+            Serial.println("RSSI: " + String(stats.lastRSSI) + " dBm");
+            Serial.println("SNR: " + String(stats.lastSNR) + " dB");
+            Serial.println("Source ID: " + String(packet->sourceID) + ", Hops: " + String(packet->hops) + "/" + String(packet->maxHops));
+            if (hasGPSDetails) {
+                Serial.println("Posición recibida: " + String(receivedLat, 6) + "," + String(receivedLon, 6));
+                Serial.println("Timestamp: " + String(receivedTimestamp));
+                Serial.println("voltaje: " + String(receivedVoltage, 2));
+            }
+        }
+
         // Verificar si debe retransmitirse (solo para ciertos tipos de mensaje)
         bool shouldRetransmit = false;
         if (packet->messageType == MSG_GPS_DATA || packet->messageType == MSG_CONFIG_CMD || 
@@ -252,37 +308,17 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
             shouldRetransmit = true;
         }
 
-        // DEBUG: Verificar por qué no se retransmite
-        if (configManager.isAdminMode())
-        {
-            Serial.println("[DEBUG] Message type: " + String(packet->messageType));
-            Serial.println("[DEBUG] Should retransmit: " + String(shouldRetransmit));
+        if (shouldRetransmit) {
+            perhapsRebroadcast(packet);
         }
 
-        if (shouldRetransmit)
-        {
-            if (configManager.isAdminMode())
-            {
-                Serial.println("[DEBUG] Llamando perhapsRebroadcast()...");
-            }
-            if (perhapsRebroadcast(packet))
-            {
-                // ...
-            }
-            else
-            {
-                if (configManager.isAdminMode())
-                {
-                    Serial.println("[DEBUG] perhapsRebroadcast() devolvió false");
-                }
-            }
-        }
-        else
-        {
-            if (configManager.isAdminMode())
-            {
-                Serial.println("[DEBUG] Message type no válido para retransmisión");
-            }
+        if (adminMode) {
+            Serial.println("Packets recibidos: " + String(stats.packetsReceived));
+            Serial.println("Duplicados ignorados: " + String(stats.duplicatesIgnored));
+            Serial.println("Retransmisiones hechas: " + String(stats.rebroadcasts));
+            Serial.println("Network filtrados: " + String(stats.networkFilteredPackets));
+            Serial.println("Packets en memoria: " + String(recentBroadcasts.size()));
+            Serial.println("=====================================");
         }
 
         return true;
@@ -321,6 +357,15 @@ bool LoRaManager::processGPSPacket(const LoRaPacket* packet, float* lat, float* 
     return true;
 }
 
+bool LoRaManager::fetchSimplePacket(String& out) {
+    if (!simplePacketPending) {
+        return false;
+    }
+    out = lastSimplePacket;
+    simplePacketPending = false;
+    return true;
+}
+
 /*
  * LOOP PRINCIPAL DE ACTUALIZACIÓN (sin cambios)
  */
@@ -330,11 +375,6 @@ void LoRaManager::update() {
     if (millis() - lastCleanup >= 30000) {
         cleanOldPackets();
         lastCleanup = millis();
-        
-        // SOLO mostrar en modo ADMIN
-        if (configManager.isAdminMode()) {
-            Serial.println("[LoRa] Packets en memoria: " + String(recentBroadcasts.size()));
-        }
     }
     
     // Verificar si hay packets recibidos

@@ -340,7 +340,21 @@ def validate_parameters(args):
         errors.append(f"Mode invalid: '{args.mode}'. Valid values: {', '.join(valid_modes)}")
     
     # Validate radio profile
-    valid_radios = ['DESERT_LONG_FAST', 'MOUNTAIN_STABLE', 'URBAN_DENSE', 'MESH_MAX_NODES', 'CUSTOM_ADVANCED']
+    valid_radios = [
+        'DESERT_LONG_FAST',
+        'MOUNTAIN_STABLE',
+        'URBAN_DENSE',
+        'MESH_MAX_NODES',
+        'SHORT_TURBO',
+        'SHORT_FAST',
+        'SHORT_SLOW',
+        'MEDIUM_FAST',
+        'MEDIUM_SLOW',
+        'LONG_FAST',
+        'LONG_MODERATE',
+        'LONG_SLOW',
+        'CUSTOM_ADVANCED',
+    ]
     if args.radio.upper() not in valid_radios:
         errors.append(f"Radio profile invalid: '{args.radio}'. Valid values: {', '.join(valid_radios)}")
     
@@ -460,7 +474,7 @@ def main():
     parser.add_argument('-interval', type=int, required=True, help='Transmission interval in seconds') 
     parser.add_argument('-region', required=True, help='LoRa region')
     parser.add_argument('-mode', required=True, help='Operation mode (SIMPLE/ADMIN)')
-    parser.add_argument('-radio', required=True, help='Radio profile (DESERT_LONG_FAST/MOUNTAIN_STABLE/URBAN_DENSE/MESH_MAX_NODES/CUSTOM_ADVANCED)')
+    parser.add_argument('-radio', required=True, help='Radio profile (see README.md for full list)')
     parser.add_argument('-hops', type=int, default=3, help='Max hops (default: 3)')
     parser.add_argument('-channel', required=True, help='Network channel name')
     parser.add_argument('-password', help='Network password (auto-generated if not provided)')

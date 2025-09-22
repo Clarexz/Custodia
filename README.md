@@ -17,7 +17,7 @@ Complete off-grid GPS tracking system based on Meshtastic algorithm with simplif
 ### Main Features
 
 - **Complete Meshtastic algorithm** implementation with mesh routing
-- **Automated cross-platform deployment** via flash tool
+- **Cross-platform build workflow** using PlatformIO
 - **Encrypted private networks** with automatic isolation
 - **Unified GPIO template** for all peripheral management
 - **Optimized radio profiles** for different environments
@@ -50,104 +50,97 @@ Complete off-grid GPS tracking system based on Meshtastic algorithm with simplif
 
 ---
 
-## Installation and Deployment
+## Build & Deployment
 
-### Automated Deployment (Recommended)
-
-**Prerequisites:**
+### Prerequisites
 - Python 3.x installed
-- ESP32-S3 device connected via USB-C
-- Git repository cloned: `git clone https://github.com/Clarexz/meshtastic_custom.git`
+- PlatformIO Core (`pip install platformio`)
+- USB cable for the target board (ESP32-S3 or XIAO nRF52840)
 
-**Single-command deployment:**
-
-**Windows:**
+### 1. Clone & Install Dependencies
 ```bash
-python flash_tool.py -role TRACKER -id 1 -interval 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST -channel TEAM_ALPHA
+git clone https://github.com/Clarexz/meshtastic_custom.git
+cd Custodia
+pip install -r requirements.txt
 ```
 
-**Mac/Linux:**
+### 2. Build & Flash Firmware
+Select the environment that matches your board:
+
 ```bash
-python3 flash_tool.py -role TRACKER -id 1 -interval 15 -region US -mode SIMPLE -radio DESERT_LONG_FAST -channel TEAM_ALPHA
+# ESP32-S3 (Seeed XIAO ESP32S3)
+python3 -m platformio run -e seeed_xiao_esp32s3 -t upload
+
+# nRF52840 (Seeed XIAO nRF52840)
+python3 -m platformio run -e seeed_xiao_nrf52840 -t upload
 ```
 
-**The tool automatically:**
-1. Detects ESP32-S3 port across all platforms
-2. Installs missing dependencies (pyserial, PlatformIO)
-3. Compiles and flashes firmware
-4. Configures all device parameters
-5. Creates and activates encrypted network
-6. Starts operational mode
-7. **Launches integrated serial monitor** for real-time diagnostics
+### 3. Open Serial Console
+After flashing, open a serial monitor at 115200 baud to access the configuration shell:
 
-### Deployment Parameters
-
-| Parameter | Description | Valid Values | Example |
-|-----------|-------------|--------------|---------|
-| `-role` | Device function | TRACKER, REPEATER, RECEIVER | `TRACKER` |
-| `-id` | Unique device ID | 1-999 | `1` |
-| `-interval` | GPS transmission interval | 5-3600 seconds | `15` |
-| `-region` | LoRa frequency region | US, EU, CH, AS, JP | `US` |
-| `-mode` | Display verbosity | SIMPLE, ADMIN | `SIMPLE` |
-| `-radio` | Radio optimization profile | See Radio Profiles section | `DESERT_LONG_FAST` |
-| `-hops` | Maximum mesh hops | 1-10 | `3` |
-| `-channel` | Private network name | 3-20 alphanumeric chars | `TEAM_ALPHA` |
-| `-password` | Network password (optional) | 8-32 chars with number+letter | `SECURE123` |
-| `-port` | Serial port override | System-specific | `COM3` or `/dev/ttyUSB0` |
-
-### Network Security Examples
-**Private encrypted network:**
 ```bash
-python3 flash_tool.py -role TRACKER -id 1 -gps 15 -region US -mode ADMIN -radio MESH_MAX_NODES -channel SECURE_OPS
+python3 -m platformio device monitor --baud 115200 --port <your_port>
 ```
 
-**Multiple isolated networks:**
-```bash
-# Network A devices
-python3 flash_tool.py -role TRACKER -id 1 -channel NORTH_TEAM -region US -mode SIMPLE -radio DESERT_LONG_FAST
+When the device boots it waits ~5 seconds for input before entering `STATE_RUNNING`. Press any key during that window or run `CONFIG` later to enter configuration mode. Commands are case-insensitive but are echoed in uppercase for clarity.
 
-# Network B devices (completely isolated)
-python3 flash_tool.py -role TRACKER -id 2 -channel SOUTH_TEAM -region US -mode SIMPLE -radio DESERT_LONG_FAST
+### 4. Manual Configuration Commands
+Use the following commands from the serial prompt to configure each device. Finish with `CONFIG_SAVE` to persist the settings and `EXIT` (or reset) to start operation.
+
+**Common Commands**
+```
+CONFIG_ROLE <TRACKER|REPEATER|RECEIVER>
+CONFIG_DEVICE_ID <1-999>
+CONFIG_GPS_INTERVAL <seconds>
+CONFIG_MAX_HOPS <1-10>
+CONFIG_DATA_MODE <SIMPLE|ADMIN>
+CONFIG_REGION <US|EU|CH|AS|JP>
+CONFIG_RADIO_PROFILE <PROFILE_NAME>
+MODE <SIMPLE|ADMIN>
+CONFIG_SAVE
+STATUS
+INFO
+HELP
 ```
 
-## Advanced Features
-
-### Integrated Serial Monitor
-
-The flash tool includes an **integrated serial monitor** that automatically launches after successful deployment:
-
-**Features:**
-- **Cross-platform compatibility** - Works on Windows, Mac, and Linux
-- **Automatic launch** - Opens in separate terminal window after flashing
-- **Real-time diagnostics** - Shows device status, GPS data, and network activity
-- **Graceful exit** - Clean termination with Ctrl+C
-
-**Manual monitor access:**
-```bash
-# If integrated monitor fails to launch automatically
-pio device monitor --baud 115200 --port [detected_port]
+**Example: Tracker**
+```
+CONFIG_ROLE TRACKER
+CONFIG_DEVICE_ID 1
+CONFIG_GPS_INTERVAL 15
+CONFIG_MAX_HOPS 3
+CONFIG_DATA_MODE SIMPLE
+CONFIG_REGION US
+CONFIG_RADIO_PROFILE DESERT_LONG_FAST
+CONFIG_SAVE
 ```
 
-### Password Management
+Tip: use `Q_CONFIG ROLE,ID,GPS_INTERVAL,REGION,DATA_MODE,RADIO_PROFILE[,MAX_HOPS]` to set the most common fields in a single command (e.g. `Q_CONFIG TRACKER,001,15,US,SIMPLE,DESERT_LONG_FAST,3`).
 
-**Auto-generated passwords:**
-- **8-character alphanumeric** strings automatically generated
-- **Security validation** - Ensures at least 1 number and 1 letter
-- **Uppercase conversion** - All passwords converted to uppercase
-- **Copy protection** - Tool offers to display password for manual copying
+**Example: Repeater**
+```
+CONFIG_ROLE REPEATER
+CONFIG_DEVICE_ID 200
+CONFIG_DATA_MODE ADMIN
+CONFIG_REGION US
+CONFIG_RADIO_PROFILE MESH_MAX_NODES
+CONFIG_SAVE
+```
 
-**Custom password validation:**
-- **Length**: 8-32 characters required
-- **Content**: Must contain at least 1 number AND 1 letter
-- **Security**: Cannot be identical to channel name
-- **Reserved words**: Common passwords like "PASSWORD123" are rejected
+**Example: Receiver**
+```
+CONFIG_ROLE RECEIVER
+CONFIG_DEVICE_ID 500
+CONFIG_DATA_MODE ADMIN
+CONFIG_REGION US
+CONFIG_RADIO_PROFILE URBAN_DENSE
+CONFIG_SAVE
+```
 
-### Enhanced Port Detection
+After saving, the device reboots into operational mode using the stored configuration. To change settings later, enter `CONFIG` to re-open the shell or issue remote commands from a receiver node.
 
-**Automatic detection:**
-- **Multi-platform support** - Detects ESP32-S3 on Windows (COM ports), Mac/Linux (tty ports)
-- **Hardware identification** - Recognizes ESP32-S3 by USB descriptors
-- **Intelligent fallback** - Manual port specification if auto-detection fails
+### Network Security
+Create isolated networks by choosing distinct channel/password pairs via the configuration shell. Use commands such as `NETWORK_CREATE <name> [password]`, `NETWORK_JOIN <name> <password>`, `NETWORK_LIST`, and `NETWORK_DELETE <name>` to manage stored networks. Passwords must be 8-32 characters with letters and numbers; the firmware enforces validation during entry.
 
 ---
 
@@ -156,14 +149,6 @@ pio device monitor --baud 115200 --port [detected_port]
 ### Unified GPIO Template
 
 The system uses a centralized GPIO management approach with all pin assignments unified in `user_logic.h`:
-
-**System Peripherals (15 pins occupied):**
-
-**GPS L76K Module:**
-```cpp
-#define GPS_RX_PIN 4
-#define GPS_TX_PIN 5
-```
 
 **LoRa SX1262 Transceiver:**
 ```cpp
@@ -174,13 +159,6 @@ The system uses a centralized GPIO management approach with all pin assignments 
 #define LORA_DIO1_PIN 39    // Interrupt
 #define LORA_RST_PIN 42     // Reset
 #define LORA_BUSY_PIN 40    // Busy Signal
-```
-
-**LED Matrix MAX7219 Display:**
-```cpp
-#define LED_MATRIX_DATA_PIN 2
-#define LED_MATRIX_CS_PIN 3
-#define LED_MATRIX_CLK_PIN 6
 ```
 
 **System Control:**
@@ -217,28 +195,44 @@ void setup() {
 
 ### Available Optimization Profiles
 
-The system includes five pre-configured radio profiles optimized for different deployment scenarios:
+The tool now bundles the original Custodia presets plus the most common Meshtastic radio profiles. Select whichever best matches your deployment goals:
 
-| Profile | SF | Bandwidth | Power | Range | Airtime | Use Case |
-|---------|----|-----------| ------|-------|---------|----------|
-| **DESERT_LONG_FAST** | 11 | 250kHz | 20dBm | ~8km | ~2.2s | Open terrain, maximum range |
-| **MOUNTAIN_STABLE** | 10 | 125kHz | 20dBm | ~4km | ~0.9s | Obstacles, harsh conditions |
-| **URBAN_DENSE** | 7 | 500kHz | 14dBm | ~800m | ~80ms | High speed, development, testing |
-| **MESH_MAX_NODES** | 9 | 250kHz | 17dBm | ~2.5km | ~320ms | Large networks (20-30 nodes) |
-| **CUSTOM_ADVANCED** | Variable | Variable | Variable | Variable | Variable | Manual configuration |
+| Profile | SF | BW (kHz) | CR | Power (dBm) | Typical Range | Airtime (44B) | Notes |
+|---------|----|----------|----|-------------|---------------|---------------|-------|
+| **SHORT_TURBO** | 7 | 500 | 4/5 | 20 | ~0.6 km | ~40 ms | Ultra-fast lab / experimental profile (500 kHz may be illegal in some regions) |
+| **SHORT_FAST** | 7 | 250 | 4/5 | 20 | ~0.9 km | ~60 ms | High throughput for dense urban meshes |
+| **SHORT_SLOW** | 8 | 250 | 4/5 | 20 | ~1.2 km | ~110 ms | Balanced short-to-medium range coverage |
+| **MEDIUM_FAST** | 9 | 250 | 4/5 | 20 | ~1.8 km | ~180 ms | Great default for growing suburban networks |
+| **MEDIUM_SLOW** | 10 | 250 | 4/5 | 20 | ~2.2 km | ~260 ms | Extra reach without huge airtime penalties |
+| **LONG_FAST** | 11 | 250 | 4/8 | 20 | ~2.6 km | ~400 ms | Meshtastic default profile |
+| **LONG_MODERATE** | 11 | 125 | 4/6 | 20 | ~3.2 km | ~650 ms | Extended reach with moderate airtime |
+| **LONG_SLOW** | 12 | 125 | 4/8 | 20 | ~4.5 km | ~1.1 s | Maximum reach and sensitivity |
+| **DESERT_LONG_FAST** | 12 | 125 | 4/5 | 20 | ~8 km | ~2.2 s | Legacy Custodia long-haul (open terrain) |
+| **MOUNTAIN_STABLE** | 10 | 125 | 4/6 | 17 | ~4 km | ~0.9 s | Legacy rugged / obstacle-heavy deployments |
+| **URBAN_DENSE** | 7 | 250 | 4/5 | 10 | ~0.8 km | ~80 ms | Legacy high-density testing profile |
+| **MESH_MAX_NODES** | 8 | 125 | 4/5 | 14 | ~2.5 km | ~320 ms | Legacy mesh balance (20-30 nodes) |
+| **CUSTOM_ADVANCED** | Var | Var | Var | Var | Depends | Depends | Manual configuration via `RADIO_PROFILE_CUSTOM` |
+
+Detailed engineering notes for each profile live in [`meshtastic_radio_profiles.md`](meshtastic_radio_profiles.md).
 
 ### Profile Configuration Examples
 
-**Deployment with specific profile:**
-```bash
-# Maximum range for rural deployment
-python3 flash_tool.py -role TRACKER -id 1 -radio DESERT_LONG_FAST -channel RURAL_NET
+**Deployment with specific profile (serial shell):**
+```
+CONFIG_ROLE TRACKER
+CONFIG_DEVICE_ID 1
+CONFIG_RADIO_PROFILE DESERT_LONG_FAST
+CONFIG_SAVE
 
-# Urban high-density network
-python3 flash_tool.py -role REPEATER -id 2 -radio URBAN_DENSE -channel CITY_MESH
+CONFIG_ROLE REPEATER
+CONFIG_DEVICE_ID 2
+CONFIG_RADIO_PROFILE URBAN_DENSE
+CONFIG_SAVE
 
-# Large network optimization
-python3 flash_tool.py -role RECEIVER -id 3 -radio MESH_MAX_NODES -channel CONTROL_NET
+CONFIG_ROLE RECEIVER
+CONFIG_DEVICE_ID 3
+CONFIG_RADIO_PROFILE MESH_MAX_NODES
+CONFIG_SAVE
 ```
 
 **Manual profile customization (via serial interface):**
@@ -298,6 +292,13 @@ NETWORK_CREATE TEAM_BETA SECRET123
 - Packets are automatically encrypted and filtered by network hash
 - No configuration required beyond network selection
 
+## GPS Logic Integration
+
+- Toda la lógica del GPS vive en `src/gps/gps_logic.cpp`. El archivo incluye la simulación por defecto, y al final encontrarás las variables `gpsData` y `gpsStatus`, además de funciones públicas que el resto del firmware consume.
+- Para conectar un módulo real solo tienes que reemplazar el contenido de ese archivo por tu implementación, manteniendo las variables y firmas expuestas. El resto del proyecto seguirá funcionando sin cambios.
+- `gps_logic.h` declara el “contrato” (funciones `gpsLogicBegin`, `gpsLogicUpdate`, etc.). Si tu código no soporta ciertas opciones (p.ej. simulación), deja las funciones como no-op y el sistema mostrará mensajes informativos.
+- `GPSManager` se limita a leer esas variables, formatear paquetes y ofrecer utilidades; no necesitas modificarlo al cambiar de hardware.
+
 ---
 
 ## LoRa Regional Support
@@ -310,7 +311,7 @@ NETWORK_CREATE TEAM_BETA SECRET123
 | **AS** | `AS` | 433 MHz | Asia (general) |
 | **JP** | `JP` | 920 MHz | Japan |
 
-**Regional configuration is automatic** based on deployment parameter.
+Configure each device with `CONFIG_REGION <code>` to select the appropriate regulatory plan before saving the configuration.
 
 ---
 

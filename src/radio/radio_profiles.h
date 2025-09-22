@@ -13,12 +13,21 @@
 /*
  * PERFILES DISPONIBLES
  */
-enum RadioProfile {
+enum RadioProfile : uint8_t {
     PROFILE_DESERT_LONG_FAST = 0,    // Máximo alcance, campo abierto
     PROFILE_MOUNTAIN_STABLE = 1,     // Obstáculos, condiciones adversas
     PROFILE_URBAN_DENSE = 2,         // Alta velocidad, muchos dispositivos
     PROFILE_MESH_MAX_NODES = 3,      // Balance para redes grandes
-    PROFILE_CUSTOM_ADVANCED = 4      // Configuración manual del usuario
+    PROFILE_CUSTOM_ADVANCED = 4,     // Configuración manual del usuario
+    PROFILE_SHORT_TURBO = 5,         // Máxima velocidad, alcance mínimo
+    PROFILE_SHORT_FAST = 6,          // Alta velocidad urbana
+    PROFILE_SHORT_SLOW = 7,          // Velocidad moderada, corto alcance
+    PROFILE_MEDIUM_FAST = 8,         // Balance velocidad/alcance
+    PROFILE_MEDIUM_SLOW = 9,         // Alcance moderado
+    PROFILE_LONG_FAST = 10,          // Perfil estándar Meshtastic
+    PROFILE_LONG_MODERATE = 11,      // Alcance extendido
+    PROFILE_LONG_SLOW = 12,          // Máximo alcance disponible
+    PROFILE_COUNT = PROFILE_LONG_SLOW + 1
 };
 
 /*
@@ -96,6 +105,62 @@ struct RadioProfileConfig {
 #define CUSTOM_POWER        14      // Medio
 #define CUSTOM_PREAMBLE     8       // Estándar
 
+// PERFIL 6: SHORT_TURBO
+#define SHORT_TURBO_SF       7
+#define SHORT_TURBO_BW       500.0f
+#define SHORT_TURBO_CR       5
+#define SHORT_TURBO_POWER    20
+#define SHORT_TURBO_PREAMBLE 8
+
+// PERFIL 7: SHORT_FAST
+#define SHORT_FAST_SF        7
+#define SHORT_FAST_BW        250.0f
+#define SHORT_FAST_CR        5
+#define SHORT_FAST_POWER     20
+#define SHORT_FAST_PREAMBLE  8
+
+// PERFIL 8: SHORT_SLOW
+#define SHORT_SLOW_SF        8
+#define SHORT_SLOW_BW        250.0f
+#define SHORT_SLOW_CR        5
+#define SHORT_SLOW_POWER     20
+#define SHORT_SLOW_PREAMBLE  8
+
+// PERFIL 9: MEDIUM_FAST
+#define MEDIUM_FAST_SF       9
+#define MEDIUM_FAST_BW       250.0f
+#define MEDIUM_FAST_CR       5
+#define MEDIUM_FAST_POWER    20
+#define MEDIUM_FAST_PREAMBLE 8
+
+// PERFIL 10: MEDIUM_SLOW
+#define MEDIUM_SLOW_SF       10
+#define MEDIUM_SLOW_BW       250.0f
+#define MEDIUM_SLOW_CR       5
+#define MEDIUM_SLOW_POWER    20
+#define MEDIUM_SLOW_PREAMBLE 8
+
+// PERFIL 11: LONG_FAST
+#define LONG_FAST_SF         11
+#define LONG_FAST_BW         250.0f
+#define LONG_FAST_CR         8
+#define LONG_FAST_POWER      20
+#define LONG_FAST_PREAMBLE   8
+
+// PERFIL 12: LONG_MODERATE
+#define LONG_MODERATE_SF         11
+#define LONG_MODERATE_BW         125.0f
+#define LONG_MODERATE_CR         6
+#define LONG_MODERATE_POWER      20
+#define LONG_MODERATE_PREAMBLE   8
+
+// PERFIL 13: LONG_SLOW
+#define LONG_SLOW_SF         12
+#define LONG_SLOW_BW         125.0f
+#define LONG_SLOW_CR         8
+#define LONG_SLOW_POWER      20
+#define LONG_SLOW_PREAMBLE   8
+
 /*
  * CLASE PARA GESTIÓN DE PERFILES
  */
@@ -122,6 +187,11 @@ public:
     
     // Configurar perfil custom
     bool setCustomParameter(const String& param, float value);
+
+    // Utilidades
+    bool tryParseProfile(const String& value, RadioProfile& profile);
+    bool isSupportedProfile(uint8_t profile) const;
+    String getProfileOptionsList(bool includeCustom = true) const;
     
     /*
      * GETTERS Y SETTERS

@@ -1,0 +1,3 @@
+# Core dependencies for Custodia Flash Tool
+pyserial>=3.5
+platformio>=6.0.0
