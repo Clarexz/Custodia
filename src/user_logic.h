@@ -3,6 +3,8 @@
 
 #if defined(ARDUINO_ARCH_ESP32)
 #include "user_logic_esp32.h"
+#elif defined(SEEED_SOLAR_NODE)
+#include "user_logic_solarnode.h"
 #elif defined(NRF52_SERIES)
 #include "user_logic_nrf.h"
 #else
