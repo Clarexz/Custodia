@@ -282,8 +282,8 @@ void ConfigManager::loadConfig() {
     config.region = (LoRaRegion)preferences.getUChar("region", REGION_US);
     config.configValid = preferences.getBool("configValid", false);
     
-    // NUEVO: Cargar Radio Profile
-    config.radioProfile = (RadioProfile)preferences.getUChar("radioProfile", PROFILE_MESH_MAX_NODES);
+    // NUEVO: Cargar Radio Profile (por defecto: LONG_FAST para Fase 3)
+    config.radioProfile = (RadioProfile)preferences.getUChar("radioProfile", PROFILE_LONG_FAST);
 #else
     if (!storageReady || !loadFromStorage()) {
         setDefaultConfig();

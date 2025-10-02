@@ -6,6 +6,7 @@
  */
 
 #include "../lora.h"
+#include "../radio/radio_profiles.h"
 
 // Instancia global del LoRaManager
 LoRaManager loraManager;
@@ -132,15 +133,19 @@ bool LoRaManager::initRadio() {
     const float tcxoVoltage = 1.6f;
 #endif
 
+    // Tomar parámetros del perfil activo (e.g., LONG_FAST)
+    RadioProfile active = configManager.getRadioProfile();
+    RadioProfileConfig p = radioProfileManager.getProfileConfig(active);
+
     // Inicializar módulo SX1262
     int state = radio.begin(
         configManager.getFrequencyMHz(),
-        LORA_BANDWIDTH,
-        LORA_SPREADING_FACTOR,
-        LORA_CODING_RATE,
+        p.bandwidth,
+        p.spreadingFactor,
+        p.codingRate,
         LORA_SYNC_WORD,
-        LORA_TX_POWER,
-        LORA_PREAMBLE_LENGTH,
+        p.txPower,
+        p.preambleLength,
         tcxoVoltage,
         false
     );
@@ -164,11 +169,13 @@ bool LoRaManager::initRadio() {
  */
 bool LoRaManager::configureRadio() {
     //Serial.println("[LoRa] Configurando parámetros de radio...");
-    
+
     int state;
-    
+
     // ACTUALIZADO: Obtener frecuencia desde ConfigManager
     float frequency = configManager.getFrequencyMHz();
+    RadioProfile active = configManager.getRadioProfile();
+    RadioProfileConfig p = radioProfileManager.getProfileConfig(active);
     
     // Configurar frecuencia según región
     state = radio.setFrequency(frequency);
@@ -180,28 +187,28 @@ bool LoRaManager::configureRadio() {
     //Serial.println("[LoRa] Frecuencia configurada: " + String(frequency) + " MHz");
     
     // Configurar potencia de transmisión
-    state = radio.setOutputPower(LORA_TX_POWER);
+    state = radio.setOutputPower(p.txPower);
     if (state != RADIOLIB_ERR_NONE) {
         Serial.println("[LoRa] ERROR: Fallo configurando potencia TX");
         return false;
     }
     
     // Configurar bandwidth
-    state = radio.setBandwidth(LORA_BANDWIDTH);
+    state = radio.setBandwidth(p.bandwidth);
     if (state != RADIOLIB_ERR_NONE) {
         Serial.println("[LoRa] ERROR: Fallo configurando bandwidth");
         return false;
     }
     
     // Configurar spreading factor
-    state = radio.setSpreadingFactor(LORA_SPREADING_FACTOR);
+    state = radio.setSpreadingFactor(p.spreadingFactor);
     if (state != RADIOLIB_ERR_NONE) {
         Serial.println("[LoRa] ERROR: Fallo configurando spreading factor");
         return false;
     }
     
     // Configurar coding rate
-    state = radio.setCodingRate(LORA_CODING_RATE);
+    state = radio.setCodingRate(p.codingRate);
     if (state != RADIOLIB_ERR_NONE) {
         Serial.println("[LoRa] ERROR: Fallo configurando coding rate");
         return false;
@@ -215,7 +222,7 @@ bool LoRaManager::configureRadio() {
     }
     
     // Configurar longitud de preámbulo
-    state = radio.setPreambleLength(LORA_PREAMBLE_LENGTH);
+    state = radio.setPreambleLength(p.preambleLength);
     if (state != RADIOLIB_ERR_NONE) {
         Serial.println("[LoRa] ERROR: Fallo configurando preámbulo");
         return false;
@@ -249,6 +256,18 @@ void LoRaManager::setBandwidth(float bandwidth) {
 void LoRaManager::setSpreadingFactor(uint8_t sf) {
     if (radio.setSpreadingFactor(sf) == RADIOLIB_ERR_NONE) {
         Serial.println("[LoRa] Spreading Factor cambiado a: SF" + String(sf));
+    }
+}
+
+void LoRaManager::setCodingRate(uint8_t cr) {
+    if (radio.setCodingRate(cr) == RADIOLIB_ERR_NONE) {
+        Serial.println("[LoRa] Coding Rate cambiado a: 4/" + String(cr));
+    }
+}
+
+void LoRaManager::setPreambleLength(uint16_t preamble) {
+    if (radio.setPreambleLength(preamble) == RADIOLIB_ERR_NONE) {
+        Serial.println("[LoRa] Preamble cambiado a: " + String(preamble) + " símbolos");
     }
 }
 

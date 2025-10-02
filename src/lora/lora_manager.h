@@ -124,6 +124,8 @@ public:
     void setTxPower(int8_t power);
     void setBandwidth(float bandwidth);
     void setSpreadingFactor(uint8_t sf);
+    void setCodingRate(uint8_t cr);
+    void setPreambleLength(uint16_t preamble);
     
     /*
      * GETTERS Y SETTERS

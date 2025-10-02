@@ -59,6 +59,27 @@ void SerialHandler::handleOperationCommands(String input) {
     
     if (input.startsWith("MODE ")) {
         configManager.handleModeChange(input.substring(5));
+    } else if (input == "PING") {
+        // Enviar heartbeat broadcast sin payload
+        if (loraManager.sendPacket(MSG_HEARTBEAT, nullptr, 0)) {
+            Serial.println("[OK] PING enviado (broadcast)");
+        } else {
+            Serial.println("[ERROR] No se pudo enviar PING");
+        }
+    } else if (input.startsWith("PING ")) {
+        // Enviar heartbeat dirigido a un device ID específico
+        String idStr = input.substring(5);
+        idStr.trim();
+        uint16_t dst = (uint16_t)idStr.toInt();
+        if (dst > 0) {
+            if (loraManager.sendPacket(MSG_HEARTBEAT, nullptr, 0, dst)) {
+                Serial.println("[OK] PING enviado a device " + String(dst));
+            } else {
+                Serial.println("[ERROR] No se pudo enviar PING a device " + String(dst));
+            }
+        } else {
+            Serial.println("[ERROR] Formato: PING <DEVICE_ID>");
+        }
     } else if (input == "CONFIG_RESET") {
         configManager.handleConfigReset();
     } else if (input == "CONFIG") {
@@ -72,6 +93,7 @@ void SerialHandler::handleOperationCommands(String input) {
     } else if (input == "HELP") {
         Serial.println("\n=== COMANDOS DURANTE OPERACIÓN ===");
         Serial.println("MODE SIMPLE/ADMIN    - Cambiar modo visualización");
+        Serial.println("PING [<ID>]          - Enviar ping (broadcast o dirigido)");
         Serial.println("CONFIG_RESET         - Resetear configuración");
         Serial.println("CONFIG               - Modo configuración");
         Serial.println("STATUS/INFO/HELP     - Información");

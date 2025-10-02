@@ -247,6 +247,8 @@ bool RadioProfileManager::applyProfile(RadioProfile profile) {
         loraManager.setSpreadingFactor(config.spreadingFactor);
         loraManager.setBandwidth(config.bandwidth);
         loraManager.setTxPower(config.txPower);
+        loraManager.setCodingRate(config.codingRate);
+        loraManager.setPreambleLength(config.preambleLength);
         
         // Para Coding Rate y Preamble, necesitaremos actualizar lora_hardware.h
         // Por ahora, solo reportamos que se aplicarían

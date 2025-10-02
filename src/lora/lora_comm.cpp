@@ -58,8 +58,10 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
     packet.payloadLength = payloadLength;
     packet.networkHash = configManager.getActiveNetworkHash();
     
-    // Copiar payload
-    memcpy(packet.payload, payload, payloadLength);
+    // Copiar payload solo si hay contenido
+    if (payloadLength > 0 && payload != nullptr) {
+        memcpy(packet.payload, payload, payloadLength);
+    }
     
     // Calcular checksum
     packet.checksum = calculateChecksum(&packet);

@@ -5,6 +5,7 @@
  */
 
 #include "../lora.h"
+#include "../radio/radio_profiles.h"
 
 /*
  * MÉTODOS DE INFORMACIÓN Y DIAGNÓSTICO - ACTUALIZADOS
@@ -28,10 +29,14 @@ void LoRaManager::printConfiguration() {
     Serial.println("Role: " + String(currentRole));
     Serial.println("Región: " + regionStr);
     Serial.println("Frecuencia: " + String(frequency) + " MHz");
-    Serial.println("TX Power: " + String(LORA_TX_POWER) + " dBm");
-    Serial.println("Bandwidth: " + String(LORA_BANDWIDTH) + " kHz");
-    Serial.println("Spreading Factor: " + String(LORA_SPREADING_FACTOR));
-    Serial.println("Coding Rate: 4/" + String(LORA_CODING_RATE));
+    // Mostrar parámetros del perfil activo
+    RadioProfile active = configManager.getRadioProfile();
+    RadioProfileConfig p = radioProfileManager.getProfileConfig(active);
+    Serial.println("Perfil Radio: " + String(radioProfileManager.getProfileName(active)));
+    Serial.println("TX Power: " + String(p.txPower) + " dBm");
+    Serial.println("Bandwidth: " + String(p.bandwidth) + " kHz");
+    Serial.println("Spreading Factor: " + String(p.spreadingFactor));
+    Serial.println("Coding Rate: 4/" + String(p.codingRate));
     Serial.println("Sync Word: 0x" + String(LORA_SYNC_WORD, HEX));
     Serial.println("Estado: " + getStatusString());
     Serial.println("Algoritmo: Meshtastic Managed Flood Routing");
