@@ -298,29 +298,60 @@ void EndNodeRepeaterRole::recordLoRaPacket(uint16_t sourceID,
 }
 
 void EndNodeRepeaterRole::handleMode() {
-    // --- INICIO: Código PoC para prueba de UART ---
-    // Este bloque reemplaza temporalmente la lógica de almacenamiento y
-    // retransmisión para validar la comunicación física con el gateway.
+    unsigned long now = millis();
 
-    ensureSerialReady(); // Asegura que Serial1 esté inicializado
-
-    if (millis() - lastStatusLog > 10000) { // Reutilizando lastStatusLog para temporizar
-        lastStatusLog = millis();
-        const char* testMessage = "SOLAR_NODE_ALIVE";
-        gatewaySerial.println(testMessage);
-        Serial.print("[END_NODE] Mensaje de prueba enviado a gateway: ");
-        Serial.println(testMessage);
-
-        // Añadido de nuevo por solicitud del usuario
-        Serial.println("[END_NODE] Packets almacenados: " + String(storedCount) +
-                       "/" + String(MAX_LOG_ENTRIES));
+    if (!announced) {
+        Serial.println("[END_NODE] Rol END_NODE_REPEATER activo.");
+        Serial.println("[END_NODE] Activando almacenamiento de packets LoRa (límite 512 registros).");
+        announced = true;
     }
 
-    // Se procesa la entrada del gateway para no bloquear el buffer si responde algo
+    ensureInitialized();
+    ensureSerialReady();
+
+    if (!storageReady) {
+        if (now - lastStorageRetry >= STORAGE_RETRY_INTERVAL_MS) {
+            lastStorageRetry = now;
+            ensureInitialized();
+        }
+        delay(100);
+        return;
+    }
+
     processGatewayInput();
 
-    delay(100); // Pequeña pausa para no saturar el CPU
-    // --- FIN: Código PoC para prueba de UART ---
+    if (transferState == TransferState::WaitingAck &&
+        announceAttempts > 0 &&
+        (millis() - lastBatchAnnounce) > ACK_TIMEOUT_MS) {
+        if (announceAttempts < MAX_START_RETRIES) {
+            sendStartBatch();
+        } else {
+            Serial.println("[END_NODE] WARN: Timeout esperando ACK, reintentará más tarde.");
+            resetTransfer(true);
+        }
+    }
+
+    if (transferState == TransferState::SendingData) {
+        if ((millis() - lastDataSend) >= DATA_SEND_INTERVAL_MS) {
+            sendNextRecord();
+        }
+    } else if (transferState == TransferState::AwaitingResult &&
+               resultWaitStart > 0 &&
+               (millis() - resultWaitStart) > RESULT_TIMEOUT_MS) {
+        Serial.println("[END_NODE] WARN: Timeout esperando TRANSFER_OK/FAIL.");
+        resetTransfer(true);
+    }
+
+    if (now - lastStatusLog >= STATUS_INTERVAL_MS) {
+        lastStatusLog = now;
+        Serial.println("[END_NODE] Packets almacenados: " + String(storedCount) +
+                       "/" + String(MAX_LOG_ENTRIES));
+        if (transferState != TransferState::Idle) {
+            Serial.println("[END_NODE] Estado transferencia activo, sesión " + String(currentSessionId));
+        }
+    }
+
+    delay(20);
 }
 
 void EndNodeRepeaterRole::processGatewayInput() {
