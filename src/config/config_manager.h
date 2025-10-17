@@ -32,7 +32,8 @@ enum DeviceRole {
     ROLE_NONE = 0,      // Sin configurar (estado inicial)
     ROLE_TRACKER = 1,   // Dispositivo que transmite su posición GPS
     ROLE_REPEATER = 2,  // Dispositivo que solo retransmite mensajes
-    ROLE_RECEIVER = 3   // Dispositivo que recibe y muestra posiciones
+    ROLE_RECEIVER = 3,  // Dispositivo que recibe y muestra posiciones
+    ROLE_END_NODE_REPEATER = 4 // Nodo solar que almacena y reenvía paquetes
 };
 
 // Estados operativos del sistema

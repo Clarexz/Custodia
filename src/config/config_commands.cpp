@@ -31,8 +31,12 @@ void ConfigManager::handleConfigRole(String value) {
         config.role = ROLE_RECEIVER;
         Serial.println("[OK] Rol configurado: RECEIVER");
     }
+    else if (value == "END_NODE_REPEATER") {
+        config.role = ROLE_END_NODE_REPEATER;
+        Serial.println("[OK] Rol configurado: END_NODE_REPEATER");
+    }
     else {
-        Serial.println("[ERROR] Rol inválido. Use: TRACKER, REPEATER, o RECEIVER");
+        Serial.println("[ERROR] Rol inválido. Use: TRACKER, REPEATER, RECEIVER o END_NODE_REPEATER");
         return;
     }
     
@@ -392,10 +396,12 @@ void ConfigManager::handleStatus() {
 
 void ConfigManager::handleHelp() {
     Serial.println("\n=== COMANDOS DISPONIBLES ===");
-    Serial.println("CONFIG_ROLE <TRACKER|REPEATER|RECEIVER>  - Configurar rol del dispositivo");
+    Serial.println("CONFIG_ROLE <TRACKER|REPEATER|RECEIVER|END_NODE_REPEATER>  - Configurar rol del dispositivo");
     Serial.println("CONFIG_DEVICE_ID <1-999>                 - Configurar ID único");
-    Serial.println("CONFIG_GPS_INTERVAL <5-3600>             - Intervalo GPS en segundos");
-    Serial.println("CONFIG_MAX_HOPS <1-10>                   - Máximo saltos en mesh");
+    if (config.role != ROLE_END_NODE_REPEATER) {
+        Serial.println("CONFIG_GPS_INTERVAL <5-3600>             - Intervalo GPS en segundos");
+        Serial.println("CONFIG_MAX_HOPS <1-10>                   - Máximo saltos en mesh");
+    }
     Serial.println("CONFIG_DATA_MODE <SIMPLE|ADMIN>          - Modo de visualización de datos");
     Serial.println("CONFIG_REGION <US|EU|CH|AS|JP>           - Región LoRa (frecuencia)");
     Serial.println("");
@@ -498,8 +504,12 @@ void ConfigManager::handleQuickConfig(String params) {
         config.role = ROLE_RECEIVER;
         Serial.println("[Q_CONFIG] ✓ Rol: RECEIVER");
     }
+    else if (role == "END_NODE_REPEATER") {
+        config.role = ROLE_END_NODE_REPEATER;
+        Serial.println("[Q_CONFIG] ✓ Rol: END_NODE_REPEATER");
+    }
     else {
-        Serial.println("[Q_CONFIG] ✗ Rol inválido: " + role + " (use: TRACKER, REPEATER, RECEIVER)");
+        Serial.println("[Q_CONFIG] ✗ Rol inválido: " + role + " (use: TRACKER, REPEATER, RECEIVER, END_NODE_REPEATER)");
         allValid = false;
     }
     
@@ -1059,6 +1069,7 @@ String ConfigManager::getRoleString(DeviceRole role) {
         case ROLE_TRACKER: return "TRACKER";
         case ROLE_REPEATER: return "REPEATER";
         case ROLE_RECEIVER: return "RECEIVER";
+        case ROLE_END_NODE_REPEATER: return "END_NODE_REPEATER";
         case ROLE_NONE: return "NONE";
         default: return "UNKNOWN";
     }

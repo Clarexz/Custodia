@@ -6,6 +6,7 @@
 #include "tracker_role.h"
 #include "repeater_role.h"
 #include "receiver_role.h"
+#include "end_node_repeater_role.h"
 #include "../config/config_manager.h"
 #include "../gps/gps_manager.h"
 #include "../lora.h"
@@ -64,6 +65,9 @@ void RoleManager::handleOperativeMode() {
         case ROLE_RECEIVER:
             receiverRole.handleMode();
             break;
+        case ROLE_END_NODE_REPEATER:
+            endNodeRepeaterRole.handleMode();
+            break;
             
         default:
             configManager.setState(STATE_CONFIG_MODE);
@@ -103,6 +107,9 @@ void RoleManager::initializeLoRaForRole() {
             
         case ROLE_RECEIVER:
             //Serial.println("[MAIN] LoRa configurado para RECEIVER (CLIENT priority + Remote Config)");
+            break;
+        case ROLE_END_NODE_REPEATER:
+            //Serial.println("[MAIN] LoRa configurado para END_NODE_REPEATER (store-and-forward)");
             break;
             
         default:
@@ -146,6 +153,10 @@ void RoleManager::initializeGPSForRole() {
             break;
         case ROLE_RECEIVER:
             gpsManager.begin();
+            break;
+        case ROLE_END_NODE_REPEATER:
+            // No inicializar GPS; los pines se reutilizan para UART con el gateway
+            Serial.println("[MAIN] Rol END_NODE_REPEATER: GPS deshabilitado (pines reservados para UART).");
             break;
             
         default:

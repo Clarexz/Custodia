@@ -597,7 +597,7 @@ bool ConfigManager::isReservedNetworkName(String name) {
     String reservedNames[] = {
         "CONFIG", "ADMIN", "DEBUG", "SYSTEM", "DEVICE", 
         "LORA", "MESH", "NETWORK", "DEFAULT", "TEST",
-        "GPS", "TRACKER", "REPEATER", "RECEIVER"
+        "GPS", "TRACKER", "REPEATER", "RECEIVER", "END_NODE_REPEATER"
     };
     
     int numReserved = sizeof(reservedNames) / sizeof(reservedNames[0]);
@@ -900,9 +900,7 @@ void ConfigManager::handleNetworkStatus() {
     Serial.println("========================================");
     Serial.println("Sistema:          " + String(config.configValid ? "CONFIGURADO" : "SIN CONFIGURAR"));
     Serial.println("Dispositivo ID:   " + String(config.deviceID));
-    Serial.println("Rol:              " + String(config.role == ROLE_TRACKER ? "TRACKER" : 
-                                                config.role == ROLE_REPEATER ? "REPEATER" : 
-                                                config.role == ROLE_RECEIVER ? "RECEIVER" : "NONE"));
+    Serial.println("Rol:              " + getRoleString(config.role));
     Serial.println("========================================");
 }
 
@@ -916,14 +914,15 @@ void ConfigManager::printConfig() {
     Serial.println("\n=== CONFIGURACIÓN ACTUAL ===");
     Serial.println("Rol: " + getRoleString(config.role));
     Serial.println("Device ID: " + String(config.deviceID));
-    Serial.println("Intervalo GPS: " + String(config.gpsInterval) + " segundos");
-    Serial.println("Máximo saltos: " + String(config.maxHops));
-    Serial.println("Modo de datos: " + getDataModeString(config.dataMode));
     Serial.println("Región LoRa: " + getRegionString(config.region) + " (" + String(getFrequencyMHz()) + " MHz)");
-    
-    // NUEVO: Mostrar Radio Profile
     Serial.println("Perfil LoRa: " + getRadioProfileName());
-    
+
+    if (config.role != ROLE_END_NODE_REPEATER) {
+        Serial.println("Intervalo GPS: " + String(config.gpsInterval) + " segundos");
+        Serial.println("Máximo saltos: " + String(config.maxHops));
+        Serial.println("Modo de datos: " + getDataModeString(config.dataMode));
+    }
+
     Serial.println("============================");
 }
 
@@ -1026,12 +1025,14 @@ bool ConfigManager::saveToStorage() {
         memset(&data.networks[i], 0, sizeof(PersistedNetwork));
     }
 
+    // Para evitar corrupción en LittleFS, es más seguro eliminar y recrear el archivo.
+    InternalFS.remove(CONFIG_STORAGE_PATH);
+
     File file(InternalFS);
     if (!file.open(CONFIG_STORAGE_PATH, FILE_O_WRITE)) {
         return false;
     }
 
-    file.truncate(0);
     size_t written = file.write(reinterpret_cast<const uint8_t*>(&data), sizeof(data));
     file.flush();
     file.close();

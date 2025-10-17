@@ -252,6 +252,7 @@ bool LoRaManager::processDiscoveryResponse(const LoRaPacket* packet) {
         case ROLE_TRACKER: roleStr = "TRACKER"; break;
         case ROLE_REPEATER: roleStr = "REPEATER"; break;
         case ROLE_RECEIVER: roleStr = "RECEIVER"; break;
+        case ROLE_END_NODE_REPEATER: roleStr = "END_NODE_REPEATER"; break;
     }
     
     // Convertir modo a string

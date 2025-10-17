@@ -34,6 +34,8 @@ TrackerRole::~TrackerRole() {
 void TrackerRole::handleMode() {
     DeviceConfig config = configManager.getConfig();
     unsigned long currentTime = millis();
+    // Alimentar el parser GPS en cada iteración del rol
+    gpsManager.update();
     
     // Verificación periódica del estado de LoRa (cada 30 segundos)
     if (currentTime - lastStatusCheck >= 30000) {
@@ -67,31 +69,29 @@ void TrackerRole::handleMode() {
         digitalWrite(LED_PIN, LOW);
         
         // Obtener datos GPS actuales
-        gpsManager.update();
         GPSData gpsData = gpsManager.getCurrentData();
-        
-        if (gpsData.hasValidFix) {
-            // Obtener datos para transmisión
-            float lat = gpsData.latitude;
-            float lon = gpsData.longitude;
-            uint16_t battery = batteryManager.getVoltage();
-            uint32_t timestamp = gpsData.timestamp;
-            
-            // Verificar estado de LoRa antes de transmitir
-            if (loraManager.getStatus() != LORA_STATUS_READY) {
-                Serial.println("[TRACKER] WARNING: LoRa no está listo para transmitir");
-                Serial.println("[TRACKER] Estado actual: " + loraManager.getStatusString());
-                return;
-            }
-            
-            // Transmitir via LoRa
-            bool sent = loraManager.sendGPSData(lat, lon, timestamp);
-            
-            // Mostrar output según modo configurado
-            displayManager.showTrackerOutput(config.deviceID, lat, lon, battery, timestamp, sent);
-            
-        } else {
-            Serial.println("[TRACKER] Sin fix GPS - Esperando señal...");
+
+        // Obtener datos para transmisión (enviar aunque no haya fix)
+        float lat = gpsData.latitude;
+        float lon = gpsData.longitude;
+        uint16_t battery = batteryManager.getVoltage();
+        uint32_t timestamp = gpsData.timestamp;
+
+        // Verificar estado de LoRa antes de transmitir
+        if (loraManager.getStatus() != LORA_STATUS_READY) {
+            Serial.println("[TRACKER] WARNING: LoRa no está listo para transmitir");
+            Serial.println("[TRACKER] Estado actual: " + loraManager.getStatusString());
+            return;
+        }
+
+        // Transmitir via LoRa (aunque las coordenadas sean inválidas)
+        bool sent = loraManager.sendGPSData(lat, lon, timestamp);
+
+        // Mostrar output según modo configurado
+        displayManager.showTrackerOutput(config.deviceID, lat, lon, battery, timestamp, sent);
+
+        if (!gpsData.hasValidFix) {
+            Serial.println("[TRACKER] Aviso: enviando sin fix (coordenadas inválidas)");
         }
     }
     

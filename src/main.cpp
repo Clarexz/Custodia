@@ -9,11 +9,25 @@
 #include "roles/role_manager.h"
 #include "serial/serial_handler.h"
 #include "serial/remote_commands.h"
+#include "user_logic_solarnode.h"
+
+// Demora de inicio segura para permitir enumeración USB y estabilizar potencia
+static unsigned long initNotBeforeMs = 0;
 
 void setup() {
+    user_logic::begin();
+
     // Inicializar comunicación serial
     Serial.begin(115200);
-    delay(2000);
+    {
+        unsigned long t0 = millis();
+        while (!Serial && (millis() - t0) < 6000) {
+            delay(10);
+        }
+        delay(200); // margen adicional
+    }
+    // Posponer inicialización de LoRa/GPS unos segundos tras el boot
+    initNotBeforeMs = millis() + 4000; // 4s extra
     
     // Configurar LED
     pinMode(LED_PIN, OUTPUT);
@@ -22,18 +36,22 @@ void setup() {
     // Inicializar sistema de configuración
     configManager.begin();
     
-    // Inicializar GPS y LoRa solo si la configuración es válida
-    if (configManager.isConfigValid()) {
-        roleManager.initializeForRole();
-    }
+    // Diferir la inicialización; se hará en loop() pasado el tiempo de seguridad
 }
 
 void loop() {
+    user_logic::handle();
+
     // Procesar comandos seriales
     serialHandler.processSerialInput();
     
     // Verificar si necesitamos inicializar LoRa después de configuración
     if (configManager.getState() == STATE_RUNNING && !roleManager.isLoRaInitialized()) {
+        // Respetar ventana de arranque seguro antes de inicializar LoRa/GPS
+        if (millis() < initNotBeforeMs) {
+            delay(50);
+            return;
+        }
         if (configManager.isConfigValid()) {
             Serial.println("[MAIN] === INICIALIZANDO SISTEMAS DESPUÉS DE CONFIGURACIÓN ===");
             roleManager.initializeForRole();
@@ -43,8 +61,8 @@ void loop() {
     
     // Actualizar GPS y LoRa si está habilitado
     if (configManager.getState() == STATE_RUNNING && roleManager.isLoRaInitialized()) {
-        // La lógica GPS actual sólo avanza los contadores cuando se envía un
-        // packet, por lo que no es necesario actualizarla constantemente.
+        // Alimentar constantemente el parser del GPS (necesario para TinyGPSPlus)
+        gpsManager.update();
         loraManager.update();
         
         // Procesar mensajes entrantes (importante para configuración remota)

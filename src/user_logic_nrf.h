@@ -36,8 +36,8 @@
 // Built-in LED
 #define LED_PIN             LED_BUILTIN
 
-// GPS placeholders (not connected in this setup)
-#define GPS_RX_PIN          -1
-#define GPS_TX_PIN          -1
+// GPS UART (L76K) on XIAO nRF52840: GPS TX -> D7 (MCU RX), GPS RX -> D6 (MCU TX)
+#define GPS_RX_PIN          D7
+#define GPS_TX_PIN          D6
 
 #endif // USER_LOGIC_NRF_H

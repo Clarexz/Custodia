@@ -84,3 +84,6 @@ build.log
 ehthumbs.db
 Thumbs.db
 Desktop.ini
+
+docs/
+gps_real/

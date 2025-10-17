@@ -8,8 +8,9 @@ GPSManager::GPSManager() {
     updateInterval = DEFAULT_UPDATE_INTERVAL;
     totalUpdates = 0;
     startTime = millis();
-    gpsLogicSetUpdateInterval(updateInterval);
-    gpsLogicBegin();
+    // Importante: no inicializar hardware aquí (antes de setup()).
+    // La inicialización real se hace en begin(), invocada por RoleManager
+    // cuando el sistema ya está listo.
 }
 
 void GPSManager::begin() {

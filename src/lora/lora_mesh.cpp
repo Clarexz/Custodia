@@ -53,7 +53,7 @@ void LoRaManager::cleanOldPackets() {
     );
     
     // Debug info - SOLO EN MODO ADMIN
-    if (configManager.isAdminMode() && recentBroadcasts.size() > 0) {
+    if (configManager.isAdminMode() && currentRole != ROLE_END_NODE_REPEATER && recentBroadcasts.size() > 0) {
         Serial.println("[LoRa] Packets en memoria: " + String(recentBroadcasts.size()));
     }
 }
@@ -78,14 +78,14 @@ uint32_t LoRaManager::getTxDelayMsecWeighted(float snr, DeviceRole role) {
     if (role == ROLE_REPEATER) {  // Como ROUTER en Meshtastic
         // ROUTERS/REPEATERS tienen MENOS delay (mayor prioridad)
         delay = random(0, pow(2, CWsize)) * ContentionWindow::slotTimeMsec;
-        if (configManager.isAdminMode()) {
+        if (configManager.isAdminMode() && role != ROLE_END_NODE_REPEATER) {
             Serial.println("[LoRa] REPEATER delay: " + String(delay) + " ms");
         }
     } else {
         // CLIENTS (TRACKER/RECEIVER) tienen MÁS delay
         delay = (2 * ContentionWindow::CWmax * ContentionWindow::slotTimeMsec) + 
                 random(0, pow(2, CWsize)) * ContentionWindow::slotTimeMsec;
-        if (configManager.isAdminMode()) {
+        if (configManager.isAdminMode() && role != ROLE_END_NODE_REPEATER) {
             Serial.println("[LoRa] CLIENT delay: " + String(delay) + " ms");
         }
     }
@@ -187,7 +187,7 @@ bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
     // Calcular delay basado en SNR y role
     uint32_t meshDelay = getTxDelayMsecWeighted(stats.lastSNR, currentRole);
     
-    if (configManager.isAdminMode()) {
+    if (configManager.isAdminMode() && currentRole != ROLE_END_NODE_REPEATER) {
         Serial.println("Programando retransmisión en " + String(meshDelay) + " ms");
     }
     
@@ -214,7 +214,7 @@ bool LoRaManager::perhapsRebroadcast(const LoRaPacket* packet) {
     
     if (state == RADIOLIB_ERR_NONE) {
         stats.rebroadcasts++;
-        if (configManager.isAdminMode()) {
+        if (configManager.isAdminMode() && currentRole != ROLE_END_NODE_REPEATER) {
             Serial.println("Retransmisión exitosa (hop " + String(retransmitPacket.hops) + ")");
             Serial.println("Air time: " + String(airTime) + " ms");
         }

@@ -106,3 +106,6 @@ void initVariant()
     pinMode(GPS_EN, OUTPUT);
     digitalWrite(GPS_EN, HIGH);
 }
+
+// Include Uart.h to make sure the framework instantiates Serial1
+#include "Uart.h"

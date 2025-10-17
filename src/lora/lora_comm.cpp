@@ -6,6 +6,7 @@
 
 #include "../lora.h"
 #include "../gps/gps_manager.h"
+#include "../roles/end_node_repeater_role.h"
 
 /*
  * ENVÍO DE DATOS GPS (sin cambios)
@@ -82,7 +83,7 @@ bool LoRaManager::sendPacket(LoRaMessageType msgType, const uint8_t* payload, ui
         stats.packetsSent++;
         
         // SOLO mostrar debug en modo ADMIN
-        if (configManager.isAdminMode()) {
+        if (configManager.isAdminMode() && currentRole != ROLE_END_NODE_REPEATER) {
             Serial.println("[LoRa] Packet enviado exitosamente");
             Serial.println("[LoRa] PacketID: " + String(packet.packetID) + ", Air time: " + String(airTime) + " ms");
         }
@@ -184,6 +185,9 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                 case ROLE_RECEIVER:
                     roleName += " (CLIENT priority)";
                     break;
+                case ROLE_END_NODE_REPEATER:
+                    // roleName += " (STORE & FORWARD)"; // Removido por solicitud
+                    break;
                 default:
                     break;
             }
@@ -205,7 +209,7 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                 Serial.println("Network: NINGUNA ACTIVA - Modo legacy");
             }
 
-            Serial.println("Posición propia: " + gpsManager.formatCoordinates());
+            // Posición propia removida por solicitud
         }
         
         // Agregar a seen packets para evitar futuras retransmisiones
@@ -235,6 +239,17 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
                                        String(gpsPayload->batteryVoltage) + "," +
                                        String(timestamp);
                     simplePacketPending = true;
+
+                    if (currentRole == ROLE_END_NODE_REPEATER) {
+                        endNodeRepeaterRole.recordLoRaPacket(
+                            sourceID,
+                            lat,
+                            lon,
+                            timestamp,
+                            gpsPayload->batteryVoltage,
+                            stats.lastRSSI,
+                            stats.lastSNR);
+                    }
                 }
                 break;
                 
@@ -291,13 +306,13 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
 
         if (adminMode) {
             Serial.println("Packet válido recibido");
-            Serial.println("RSSI: " + String(stats.lastRSSI) + " dBm");
-            Serial.println("SNR: " + String(stats.lastSNR) + " dB");
-            Serial.println("Source ID: " + String(packet->sourceID) + ", Hops: " + String(packet->hops) + "/" + String(packet->maxHops));
             if (hasGPSDetails) {
-                Serial.println("Posición recibida: " + String(receivedLat, 6) + "," + String(receivedLon, 6));
-                Serial.println("Timestamp: " + String(receivedTimestamp));
-                Serial.println("voltaje: " + String(receivedVoltage, 2));
+                String packetData = "  └─ Packet: from=" + String(packet->sourceID) +
+                                    ", lat=" + String(receivedLat, 4) +
+                                    ", lon=" + String(receivedLon, 4) +
+                                    ", v=" + String(receivedVoltage, 2) +
+                                    ", ts=" + String(receivedTimestamp);
+                Serial.println(packetData);
             }
         }
 
@@ -313,11 +328,7 @@ bool LoRaManager::receivePacket(LoRaPacket* packet) {
         }
 
         if (adminMode) {
-            Serial.println("Packets recibidos: " + String(stats.packetsReceived));
-            Serial.println("Duplicados ignorados: " + String(stats.duplicatesIgnored));
-            Serial.println("Retransmisiones hechas: " + String(stats.rebroadcasts));
-            Serial.println("Network filtrados: " + String(stats.networkFilteredPackets));
-            Serial.println("Packets en memoria: " + String(recentBroadcasts.size()));
+            // El resto de las estadísticas fueron removidas por solicitud.
             Serial.println("=====================================");
         }
 

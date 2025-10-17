@@ -54,5 +54,18 @@
 #define BATTERY_MONITOR_PIN PIN_VBAT
 #define BATTERY_READ_PIN    D19
 
+// =====================
+// Power & Button Control (from Meshtastic variant)
+// =====================
+#define POWER_CTRL_PIN      (28)
+#define USER_BUTTON_PIN     (11)
+
+
+namespace user_logic {
+    void begin();
+    void handle();
+    void powerOff();
+}
+
 #endif // USER_LOGIC_SOLARNODE_H
 
