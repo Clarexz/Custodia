@@ -9,7 +9,7 @@ constexpr int SOLAR_UART_TX_PIN = 18;  // LilyGo GPIO18 → Solar D6
 constexpr uint32_t SOLAR_UART_BAUD = 115200;
 
 // Temporizadores y límites del protocolo
-constexpr unsigned long PING_INTERVAL_MS = 5000;
+constexpr unsigned long PING_INTERVAL_MS = 60000;
 constexpr unsigned long UART_READ_TIMEOUT_MS = 10000;
 constexpr unsigned long RESEND_WAIT_MS = 1500;
 
@@ -18,7 +18,7 @@ constexpr char WIFI_SSID[] = "Totalplay-2.4G-f128";
 constexpr char WIFI_PASS[] = "sAZBHbpPzub6xpyU";
 
 // Endpoint HTTP de pruebas (fallback Wi-Fi)
-constexpr char HTTP_POST_URL[] = "https://webhook.site/8eafb7bc-1464-4751-b4d4-f7fe718f1603";
+constexpr char HTTP_POST_URL[] = "https://webhook.site/0fc6acc7-ab03-486d-aa32-0db0df27d6d6";
 
 enum class GatewayState : uint8_t {
     Idle,

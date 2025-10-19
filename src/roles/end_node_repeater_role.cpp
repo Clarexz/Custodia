@@ -540,13 +540,77 @@ void EndNodeRepeaterRole::sendEndBatch() {
     resultWaitStart = millis();
 }
 
+void EndNodeRepeaterRole::deleteRecordsFromLog(size_t recordsToDelete) {
+#if !CONFIG_MANAGER_HAS_PREFERENCES
+    if (recordsToDelete == 0) {
+        return;
+    }
+    if (recordsToDelete >= storedCount) {
+        createLogFile();
+        return;
+    }
+
+    File file(InternalFS);
+    if (!file.open(LOG_FILE_PATH, FILE_O_READ)) {
+        Serial.println("[END_NODE] WARN: No se pudo abrir log para eliminación, recreando.");
+        createLogFile();
+        return;
+    }
+
+    std::vector<String> remainingRecords;
+    remainingRecords.reserve(storedCount - recordsToDelete);
+
+    bool headerSkipped = false;
+    size_t skippedRecords = 0;
+
+    while (file.available()) {
+        String line = file.readStringUntil('\n');
+        if (!headerSkipped) {
+            headerSkipped = true;
+            continue;
+        }
+        line.trim();
+        if (line.length() == 0) {
+            continue;
+        }
+
+        if (skippedRecords < recordsToDelete) {
+            skippedRecords++;
+            continue;
+        }
+        remainingRecords.push_back(line);
+    }
+    file.close();
+
+    InternalFS.remove(LOG_FILE_PATH);
+    File writer(InternalFS);
+    if (!writer.open(LOG_FILE_PATH, FILE_O_WRITE)) {
+        Serial.println("[END_NODE] ERROR: No se pudo reescribir log tras eliminar.");
+        storageReady = false;
+        storedCount = 0; // Perdimos el log
+        return;
+    }
+
+    writer.println(LOG_FILE_HEADER);
+    for (const auto& record : remainingRecords) {
+        writer.println(record);
+    }
+    writer.close();
+
+    storedCount = remainingRecords.size();
+    Serial.println("[END_NODE] " + String(recordsToDelete) + " registros eliminados. " +
+                   String(storedCount) + " restantes.");
+#endif
+}
+
 void EndNodeRepeaterRole::handleTransferOk(uint16_t session) {
     if (transferState != TransferState::AwaitingResult || session != currentSessionId) {
         return;
     }
 
     Serial.println("[END_NODE] Transferencia exitosa. Limpieza de log.");
-    resetTransfer(false);
+    deleteRecordsFromLog(batchRecords.size());
+    resetTransfer(true); // Preserva los registros restantes
 }
 
 void EndNodeRepeaterRole::handleTransferFail(uint16_t session, const String& reason) {

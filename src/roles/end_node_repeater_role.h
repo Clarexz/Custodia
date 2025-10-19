@@ -84,6 +84,7 @@ private:
     void sendStartBatch();
     void sendNextRecord();
     void sendEndBatch();
+    void deleteRecordsFromLog(size_t recordsToDelete);
     static String hexEncode(const String& input);
 };
 
