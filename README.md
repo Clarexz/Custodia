@@ -48,6 +48,25 @@ Complete off-grid GPS tracking system based on Meshtastic algorithm with simplif
 - Network discovery and management
 - Complete mesh statistics and diagnostics
 
+### Extended Architecture: Store-and-Forward Roles
+
+The system also introduces an advanced two-component architecture for data storing and forwarding, ideal for scenarios where internet connectivity is not constant.
+
+#### END_NODE_REPEATER
+This role, designed for the **Solar Node (nRF52840)**, combines the capabilities of a LoRa repeater with a local storage system.
+
+- **Persistent Storage:** Captures and saves all received LoRa packets to internal flash memory (LittleFS).
+- **Batch Transfer:** Initiates communication with a gateway at configurable time intervals to transfer accumulated data.
+- **Fault Tolerance:** Deletes local data only after receiving confirmation that the gateway has successfully processed it, ensuring no data loss.
+- **Configurable Send Interval:** Uses the `CONFIG_TIME2SEND` command (e.g., `CONFIG_TIME2SEND 1h 30m`) to define how often it attempts to contact the gateway.
+
+#### GATEWAY
+This role runs on dedicated hardware, the **LilyGo T-SIM7080-S3**, and acts as a bridge between the LoRa network and an external API.
+
+- **Passive Receiver:** Listens for data transfer requests from an `END_NODE_REPEATER` via a physical UART connection.
+- **Internet Uplink:** Once a batch of data is received, it attempts to send it to an HTTP endpoint via Wi-Fi. The architecture is designed to use the SIM7080's cellular network as a primary or backup connectivity option.
+- **Transfer Confirmation:** Informs the `END_NODE_REPEATER` about the success or failure of the uplink, allowing it to manage its local storage.
+
 ---
 
 ## Build & Deployment
@@ -89,9 +108,10 @@ Use the following commands from the serial prompt to configure each device. Fini
 
 **Common Commands**
 ```
-CONFIG_ROLE <TRACKER|REPEATER|RECEIVER>
+CONFIG_ROLE <TRACKER|REPEATER|RECEIVER|END_NODE_REPEATER>
 CONFIG_DEVICE_ID <1-999>
 CONFIG_GPS_INTERVAL <seconds>
+CONFIG_TIME2SEND <e.g. 1h 30m>
 CONFIG_MAX_HOPS <1-10>
 CONFIG_DATA_MODE <SIMPLE|ADMIN>
 CONFIG_REGION <US|EU|CH|AS|JP>
@@ -134,6 +154,16 @@ CONFIG_DEVICE_ID 500
 CONFIG_DATA_MODE ADMIN
 CONFIG_REGION US
 CONFIG_RADIO_PROFILE URBAN_DENSE
+CONFIG_SAVE
+```
+
+**Example: End Node Repeater**
+```
+CONFIG_ROLE END_NODE_REPEATER
+CONFIG_DEVICE_ID 300
+CONFIG_TIME2SEND 1h 30m
+CONFIG_REGION US
+CONFIG_RADIO_PROFILE MESH_MAX_NODES
 CONFIG_SAVE
 ```
 

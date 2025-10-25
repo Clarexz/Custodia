@@ -47,7 +47,7 @@ static uint32_t currentBaud = GPS_BAUD;
 
 // Autobaud simple: probar varios baudios hasta detectar NMEA plausibles
 #ifndef GPS_AUTOBAUD_ENABLED
-#define GPS_AUTOBAUD_ENABLED 1
+#define GPS_AUTOBAUD_ENABLED 0 // Desactivado: Falla y causa falsos positivos. 9600 bps es la velocidad correcta.
 #endif
 #ifndef GPS_AUTOBAUD_WINDOW_MS
 #define GPS_AUTOBAUD_WINDOW_MS 1500
